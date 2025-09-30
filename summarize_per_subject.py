@@ -10,7 +10,7 @@ DEFAULT_OUT_FILE = "subject_summary.txt"
 MODELS = [
     "TCFormer", "ATCNet", "EEGNet", "ShallowNet",
     "BaseNet", "EEGTCNet", "EEGConformer",
-    "TSSEFFNet", "CTNet/heads=4, F1=20, emb_size=40", "MSCFormer"
+    "TSSEFFNet", "CTNet/heads=4, F1=20, emb_size=40", "MSCFormer","RatioWaveNet"
 ]
 DATASETS = ["2a", "2b", "HGD"]
 # ======================================================================

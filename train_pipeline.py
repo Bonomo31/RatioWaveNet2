@@ -1,3 +1,4 @@
+#python train_pipeline.py --model ratiowavenet --dataset hgd --loso --interaug --subject 13
 import os, time, yaml
 import numpy as np
 from pathlib import Path
@@ -171,7 +172,7 @@ def parse_arguments():
     parser.add_argument("--loso", action="store_true", default=False, 
         help="Enable subject-independent (LOSO) mode"
     )
-    parser.add_argument("--gpu_id", type=int, default=1, help="GPU device ID to use")
+    parser.add_argument("--gpu_id", type=int, default=0, help="GPU device ID to use")
     
     parser.add_argument("--seed", type=int, default=None, 
                         help="Random seed value (overrides config if specified)")
@@ -179,6 +180,8 @@ def parse_arguments():
                         help="Enable inter-trial augmentation (overrides config if specified)")
     parser.add_argument("--no_interaug", action="store_true", 
                         help="Disable inter-trial augmentation (overrides config if specified)")
+    parser.add_argument("--subject_ids", type=str, default=None,
+                        help="Soggetti da eseguire: 'all', '3' oppure '1,2,5'")
     return parser.parse_args()
 
 # ----------------------------------------------
@@ -217,6 +220,15 @@ def run():
     # Override seed if specified
     if args.seed is not None:
         config["seed"] = args.seed
+        
+    if args.subject_ids is not None:
+        val = args.subject_ids.strip().lower()
+        if val == "all":
+            config["subject_ids"] = "all"
+        else:
+            ids = [int(x) for x in val.split(",")]
+            config["subject_ids"] = ids[0] if len(ids) == 1 else ids
+
 
     # set to True to plot confusion matrices
     config["plot_cm_per_subject"] = True # set to True to plot per-subject confusion matrices

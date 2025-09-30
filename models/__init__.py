@@ -9,3 +9,4 @@ from .tsseffnet import TSSEFFNet
 from .ctnet import CTNet
 from .mscformer import MSCFormer
 from .eegdeformer import EEGDeformer
+from .ratiowavenet import RatioWaveNet

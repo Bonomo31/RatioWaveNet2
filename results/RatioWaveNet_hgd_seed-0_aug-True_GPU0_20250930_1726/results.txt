@@ -1,0 +1,14 @@
+Results for model: RatioWaveNet
+#Params: 131480
+Dataset: hgd
+Subject IDs: [14]
+
+Results for each subject:
+Subject 14 => Train Time: 93.34m, Test Time: 20.60s, Test Acc: 0.7563, Test Loss: 0.8907, Test Kappa: 0.6750
+
+--- Summary Statistics ---
+Average Test Accuracy: 75.63 ± 0.00
+Average Test Kappa:    0.675 ± 0.000
+Average Test Loss:     0.891 ± 0.000
+Total Training Time: 93.34 min
+Average Response Time: 23.45 ms

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-models=("tcformer" "atcnet" "eegnet" "shallownet" "basenet" "eegtcnet" "eegconformer" "tsseffnet" "ctnet" "mscformer")
+models=("tcformer" "atcnet" "eegnet" "shallownet" "basenet" "eegtcnet" "eegconformer" "tsseffnet" "ctnet" "mscformer" "ratiowavenet")
 datasets=("bcic2a" "bcic2b" "hgd")
 seeds=(0 1 2 3 4) # 5 seeds for each model-dataset pair
 augs=("interaug" "no_interaug")

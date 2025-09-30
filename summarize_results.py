@@ -4,7 +4,7 @@ import re
 import sys
 
 # === Configuration defaults (edit here if you prefer hard-coded paths) ===
-DEFAULT_ROOT_DIR = "/results/TCFormer/2a"
+DEFAULT_ROOT_DIR = "/results/RatioWaveNet/2a"
 DEFAULT_OUT_FILE = "summary.txt"
 # ======================================================================
 
