@@ -1,0 +1,14 @@
+Results for model: TCFormer
+#Params: 131436
+Dataset: hgd
+Subject IDs: [14]
+
+Results for each subject:
+Subject 14 => Train Time: 71.54m, Test Time: 22.10s, Test Acc: 0.9000, Test Loss: 0.3008, Test Kappa: 0.8667
+
+--- Summary Statistics ---
+Average Test Accuracy: 90.00 ± 0.00
+Average Test Kappa:    0.867 ± 0.000
+Average Test Loss:     0.301 ± 0.000
+Total Training Time: 71.54 min
+Average Response Time: 33.84 ms

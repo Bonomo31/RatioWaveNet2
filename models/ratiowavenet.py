@@ -207,6 +207,83 @@ class RDWTFrontEnd(nn.Module):
         return y
 
 
+class ParallelRDWTFrontEnd(nn.Module):
+    """Parallel ensemble of :class:`RDWTFrontEnd` blocks with learnable fusion."""
+
+    def __init__(
+        self,
+        level_choices,
+        base_kernel_len: int = 16,
+        init_wavelet: str = "db4",
+        init_dilations=(1.5, 5 / 3, 7 / 4, 9 / 5, 11 / 6, 13 / 7, 15 / 8, 17 / 9, 19 / 10, 21 / 11),
+        use_soft_threshold: bool = True,
+        threshold_init: float = 0.0,
+        max_scale: float = 4.0,
+        l2_on_logscale: float = 0.0,
+        use_spread_loss: bool = False,
+        spread_lambda: float = 1e-3,
+        spread_gamma: float = 4.0,
+        temp_init: float = 0.5,
+    ) -> None:
+        super().__init__()
+
+        if isinstance(level_choices, int):
+            level_choices = [level_choices]
+        self.level_choices = tuple(int(l) for l in level_choices)
+        if len(self.level_choices) == 0:
+            raise ValueError("`level_choices` must contain at least one level.")
+
+        max_requested_level = max(self.level_choices)
+        init_dilations = tuple(init_dilations)
+        if len(init_dilations) < max_requested_level:
+            raise ValueError(
+                "`init_dilations` must provide at least as many entries as the maximum level "
+                f"requested ({max_requested_level})."
+            )
+
+        self.front_ends = nn.ModuleList(
+            [
+                RDWTFrontEnd(
+                    levels=levels,
+                    base_kernel_len=base_kernel_len,
+                    init_wavelet=init_wavelet,
+                    init_dilations=init_dilations,
+                    use_soft_threshold=use_soft_threshold,
+                    threshold_init=threshold_init,
+                    max_scale=max_scale,
+                    l2_on_logscale=l2_on_logscale,
+                    use_spread_loss=use_spread_loss,
+                    spread_lambda=spread_lambda,
+                    spread_gamma=spread_gamma,
+                    temp_init=temp_init,
+                )
+                for levels in self.level_choices
+            ]
+        )
+
+        self.fusion_logits = nn.Parameter(torch.zeros(len(self.front_ends)))
+        self.register_buffer(
+            "_level_choices_tensor",
+            torch.tensor(self.level_choices, dtype=torch.int32),
+            persistent=False,
+        )
+
+    @property
+    def fusion_weights(self) -> Tensor:
+        """Return the current softmax-normalised fusion weights."""
+
+        return torch.softmax(self.fusion_logits, dim=0)
+
+    def forward(self, x: Tensor) -> Tensor:
+        if len(self.front_ends) == 1:
+            return self.front_ends[0](x)
+
+        branch_outputs = [frontend(x) for frontend in self.front_ends]
+        stacked = torch.stack(branch_outputs, dim=0)
+        weights = self.fusion_weights.view(-1, 1, 1, 1)
+        return (weights * stacked).sum(dim=0)
+
+
 class MultiKernelConvBlock(nn.Module):
     """
     Multi-Kernel Convolution Block for EEG Feature Extraction.
@@ -475,8 +552,10 @@ class TCFormerModule_ablation(nn.Module):
         # --- RDWT params ---
         use_rdwt: bool = True,
         rdwt_levels: int = 4,
+        rdwt_level_choices=tuple(range(2, 11)),
         rdwt_base_kernel_len: int = 16,
-        rdwt_init_dilations=(1.5, 5/3, 7/4, 9/5),
+        #rdwt_init_dilations=(1.5, 5/3, 7/4, 9/5),
+        rdwt_init_dilations=(1.5, 5 / 3, 7 / 4, 9 / 5, 11 / 6, 13 / 7, 15 / 8, 17 / 9, 19 / 10, 21 / 11),
         rdwt_soft_threshold: bool = True,
         rdwt_threshold_init: float = 0.0,
         rdwt_max_scale: float = 4.0,
@@ -492,8 +571,14 @@ class TCFormerModule_ablation(nn.Module):
         # RDWT (opzionale)
         self.use_rdwt = use_rdwt
         if self.use_rdwt:
-            self.rdwt = RDWTFrontEnd(
-                levels=rdwt_levels,
+            #self.rdwt = RDWTFrontEnd(
+            #    levels=rdwt_levels,
+            if rdwt_level_choices is None:
+                level_choices = (rdwt_levels,)
+            else:
+                level_choices = tuple(int(l) for l in rdwt_level_choices)
+            self.rdwt = ParallelRDWTFrontEnd(
+                level_choices=level_choices,
                 base_kernel_len=rdwt_base_kernel_len,
                 init_dilations=rdwt_init_dilations,
                 use_soft_threshold=rdwt_soft_threshold,
@@ -557,8 +642,10 @@ class TCFormerModule(nn.Module):
             # -------- RDWT (NUOVI) ----------
             use_rdwt: bool = True,
             rdwt_levels: int = 4,
+            rdwt_level_choices=tuple(range(2, 11)),
             rdwt_base_kernel_len: int = 16,
-            rdwt_init_dilations=(1.5, 5/3, 7/4, 9/5),
+            #rdwt_init_dilations=(1.5, 5/3, 7/4, 9/5),
+            rdwt_init_dilations=(1.5, 5 / 3, 7 / 4, 9 / 5, 11 / 6, 13 / 7, 15 / 8, 17 / 9, 19 / 10, 21 / 11),
             rdwt_soft_threshold: bool = True,
             rdwt_threshold_init: float = 0.0,
             rdwt_max_scale: float = 4.0,
@@ -576,8 +663,14 @@ class TCFormerModule(nn.Module):
         # ---------- RDWT front-end ----------
         self.use_rdwt = use_rdwt
         if self.use_rdwt:
-            self.rdwt = RDWTFrontEnd(
-                levels=rdwt_levels,
+            #self.rdwt = RDWTFrontEnd(
+            #    levels=rdwt_levels,
+            if rdwt_level_choices is None:
+                level_choices = (rdwt_levels,)
+            else:
+                level_choices = tuple(int(l) for l in rdwt_level_choices)
+            self.rdwt = ParallelRDWTFrontEnd(
+                level_choices=level_choices,
                 base_kernel_len=rdwt_base_kernel_len,
                 init_dilations=rdwt_init_dilations,
                 use_soft_threshold=rdwt_soft_threshold,
@@ -801,8 +894,10 @@ class RatioWaveNet(ClassificationModule):
         # --- RDWT params ---
         use_rdwt: bool = True,
         rdwt_levels: int = 4,
+        rdwt_level_choices=tuple(range(2, 11)),
         rdwt_base_kernel_len: int = 16,
-        rdwt_init_dilations=(1.5, 5/3, 7/4, 9/5),
+        #rdwt_init_dilations=(1.5, 5/3, 7/4, 9/5),
+        rdwt_init_dilations=(1.5, 5 / 3, 7 / 4, 9 / 5, 11 / 6, 13 / 7, 15 / 8, 17 / 9, 19 / 10, 21 / 11),
         rdwt_soft_threshold: bool = True,
         rdwt_threshold_init: float = 0.0,
         rdwt_max_scale: float = 4.0,
@@ -832,6 +927,7 @@ class RatioWaveNet(ClassificationModule):
             # RDWT
             use_rdwt=use_rdwt,
             rdwt_levels=rdwt_levels,
+            rdwt_level_choices=rdwt_level_choices,
             rdwt_base_kernel_len=rdwt_base_kernel_len,
             rdwt_init_dilations=rdwt_init_dilations,
             rdwt_soft_threshold=rdwt_soft_threshold,

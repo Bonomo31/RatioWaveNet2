@@ -1,0 +1,14 @@
+Results for model: TCFormer
+#Params: 131436
+Dataset: hgd_loso
+Subject IDs: [13]
+
+Results for each subject:
+Subject 13 => Train Time: 68.27m, Test Time: 315.28s, Test Acc: 0.4025, Test Loss: 1.9726, Test Kappa: 0.2053
+
+--- Summary Statistics ---
+Average Test Accuracy: 40.25 ± 0.00
+Average Test Kappa:    0.205 ± 0.000
+Average Test Loss:     1.973 ± 0.000
+Total Training Time: 68.27 min
+Average Response Time: 10.98 ms

@@ -1,0 +1,14 @@
+Results for model: RatioWaveNet
+#Params: 127256
+Dataset: bcic2a
+Subject IDs: [6]
+
+Results for each subject:
+Subject 6 => Train Time: 24.08m, Test Time: 2.56s, Test Acc: 0.7222, Test Loss: 0.7429, Test Kappa: 0.6296
+
+--- Summary Statistics ---
+Average Test Accuracy: 72.22 ± 0.00
+Average Test Kappa:    0.630 ± 0.000
+Average Test Loss:     0.743 ± 0.000
+Total Training Time: 24.08 min
+Average Response Time: 11.06 ms

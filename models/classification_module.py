@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import torch
 from torch.nn import functional as F
 from torch.optim.lr_scheduler import LambdaLR
@@ -148,6 +150,82 @@ class ClassificationModule(pl.LightningModule):
             cm_percent = cm_counts.float() / row_sums * 100.0
 
         self.test_confmat = cm_percent.cpu()        # stash for plotting
+
+    def on_train_end(self) -> None:
+        """Log final RDWT front-end parameters when available."""
+
+        rdwt_module = getattr(self.model, "rdwt", None)
+        if rdwt_module is None:
+            self.print("[RDWT] Warning: model does not expose an RDWT front-end (use_rdwt=False?).")
+            return
+
+        def _tensor_to_list(value):
+            if value is None:
+                return None
+            if isinstance(value, torch.Tensor):
+                value = value.detach().cpu()
+                if value.numel() == 1:
+                    return value.item()
+                return value.tolist()
+            if isinstance(value, (list, tuple)):
+                converted = []
+                for item in value:
+                    if isinstance(item, torch.Tensor):
+                        item = item.detach().cpu()
+                        converted.append(item.item() if item.numel() == 1 else item.tolist())
+                    elif isinstance(item, (list, tuple)):
+                        converted.append(_tensor_to_list(item))
+                    else:
+                        converted.append(item)
+                return converted
+            return value
+
+        def _extract_scales(module):
+            if all(hasattr(module, attr) for attr in ("z", "temp", "max_scale")):
+                z = module.z.detach()
+                temp = module.temp.detach()
+                max_scale = float(module.max_scale)
+                return 1.0 + (max_scale - 1.0) * torch.sigmoid(z / temp)
+            return None
+
+        log_lines = []
+        with torch.no_grad():
+            if hasattr(rdwt_module, "branches"):
+                branches = list(rdwt_module.branches)
+                fusion_weights = _tensor_to_list(getattr(rdwt_module, "fusion_weights", None))
+                if fusion_weights is not None and not isinstance(fusion_weights, list):
+                    fusion_weights = [fusion_weights]
+                for idx, branch in enumerate(branches):
+                    scales = _tensor_to_list(_extract_scales(branch))
+                    weight = None
+                    if isinstance(fusion_weights, list) and idx < len(fusion_weights):
+                        weight = fusion_weights[idx]
+                    elif fusion_weights is not None:
+                        weight = fusion_weights
+                    log_lines.append(f"Branch {idx}: levels={scales}, weights={weight}")
+            else:
+                scales = _tensor_to_list(_extract_scales(rdwt_module))
+                alpha = _tensor_to_list(getattr(rdwt_module, "alpha", None))
+                log_lines.append(f"RDWT levels={scales}, alpha={alpha}")
+
+        if not log_lines:
+            self.print("[RDWT] Warning: Unable to extract RDWT parameters to log.")
+            return
+
+        header = f"[RDWT] Front-end summary (global_step={self.global_step})"
+        self.print(header)
+        for line in log_lines:
+            self.print(f"[RDWT] {line}")
+
+        log_dir = getattr(self.trainer, "log_dir", None)
+        if log_dir:
+            log_path = Path(log_dir) / "rdwt_frontend_summary.txt"
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_path.open("a", encoding="utf-8") as fp:
+                fp.write(header + "\n")
+                for line in log_lines:
+                    fp.write(line + "\n")
+                fp.write("\n")
 
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
         x, _ = batch
