@@ -86,10 +86,12 @@ model_kwargs:
   # RDWT parameters
   use_rdwt: true
   rdwt_levels: 4
-  rdwt_level_choices: [2, 3, 4, 5, 6, 7, 8, 9, 10]
+  rdwt_level_choices: [2, 3, 4, 5, 6]
+  #, 7, 8, 9, 10]
   rdwt_base_kernel_len: 16
   #rdwt_init_dilations: [1.5, 1.6667, 1.75, 1.8]
-  rdwt_init_dilations: [1.5, 1.6667, 1.75, 1.8, 1.8333, 1.8571, 1.875, 1.8889, 1.9, 1.9091]
+  rdwt_init_dilations: [1.5, 1.6667, 1.75, 1.8, 1.8333, 1.8571]
+  #, 1.875, 1.8889, 1.9, 1.9091]
   rdwt_soft_threshold: true
   rdwt_threshold_init: 0.0
   rdwt_max_scale: 4.0

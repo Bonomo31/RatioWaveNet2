@@ -58,6 +58,7 @@ def train_and_test(config):
     test_accs, test_losses, test_kappas = [], [], []
     train_times, test_times, response_times = [], [], []
     all_confmats = []
+    rdwt_summaries = {}
 
     # Loop through each subject ID for training and testing   
     for subject_id in subject_ids:
@@ -95,6 +96,10 @@ def train_and_test(config):
         st_train = time.time()
         trainer.fit(model, datamodule=datamodule)
         train_times.append((time.time() - st_train) / 60) # minutes
+        
+        rdwt_summary = getattr(model, "rdwt_summary", None)
+        if rdwt_summary:
+            rdwt_summaries[subject_id] = list(rdwt_summary)
 
         # ---------------- TEST -----------------
         st_test = time.time()
@@ -144,7 +149,8 @@ def train_and_test(config):
    
     # Summarize and save final results
     write_summary(result_dir, model_name, dataset_name, subject_ids, param_count,
-        test_accs, test_losses, test_kappas, train_times, test_times, response_times)
+                test_accs, test_losses, test_kappas, train_times, test_times, response_times,
+                rdwt_summaries=rdwt_summaries)
     
     # plot the average if requested
     if config.get("plot_cm_average", True) and all_confmats:

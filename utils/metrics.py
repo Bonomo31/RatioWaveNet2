@@ -28,7 +28,7 @@ class MetricsCallback(Callback):
 # Helper to write summary results to a text file
 def write_summary(result_dir, model_name, dataset_name, subject_ids,
                    param_count, test_accs, test_losses, test_kappas,
-                   train_times, test_times, response_times):
+                   train_times, test_times, response_times, rdwt_summaries=None):
     avg_test_acc = float(np.mean(test_accs))
     std_test_acc = float(np.std(test_accs))
     avg_test_kappa = float(np.mean(test_kappas))   # 🆕  average κ
@@ -55,13 +55,28 @@ def write_summary(result_dir, model_name, dataset_name, subject_ids,
                 f"Test Loss: {test_losses[i]:.4f}, "
                 f"Test Kappa: {test_kappas[i]:.4f}\n"   # 🆕 κ output
             )
-
+            if rdwt_summaries:
+                subject_summary = rdwt_summaries.get(subject_id)
+                if subject_summary:
+                    f.write("    RDWT Front-end Parameters:\n")
+                    for line in subject_summary:
+                        f.write(f"        {line}\n")
         f.write("\n--- Summary Statistics ---\n")
         f.write(f"Average Test Accuracy: {avg_test_acc * 100:.2f} ± {std_test_acc * 100:.2f}\n")
         f.write(f"Average Test Kappa:    {avg_test_kappa:.3f} ± {std_test_kappa:.3f}\n")
         f.write(f"Average Test Loss:     {avg_test_loss:.3f} ± {std_test_loss:.3f}\n")
         f.write(f"Total Training Time: {total_train_time:.2f} min\n")
         f.write(f"Average Response Time: {avg_response_time:.2f} ms\n")
+        
+        if rdwt_summaries:
+            f.write("\n--- RDWT Front-end Summary ---\n")
+            for subject_id in subject_ids:
+                subject_summary = rdwt_summaries.get(subject_id)
+                if not subject_summary:
+                    continue
+                f.write(f"Subject {subject_id}:\n")
+                for line in subject_summary:
+                    f.write(f"  {line}\n")
 
     print("\n=== Summary ===")
     print(f"Average Test Accuracy: {avg_test_acc * 100:.2f} ± {std_test_acc * 100:.2f}")
@@ -69,3 +84,13 @@ def write_summary(result_dir, model_name, dataset_name, subject_ids,
     print(f"Average Test Loss:     {avg_test_loss:.3f} ± {std_test_loss:.3f}")
     print(f"Total Training Time: {total_train_time:.2f} min")
     print(f"Average Response Time: {avg_response_time:.2f} ms")
+    
+    if rdwt_summaries:
+        print("\n--- RDWT Front-end Summary ---")
+        for subject_id in subject_ids:
+            subject_summary = rdwt_summaries.get(subject_id)
+            if not subject_summary:
+                continue
+            print(f"Subject {subject_id}:")
+            for line in subject_summary:
+                print(f"  {line}")
