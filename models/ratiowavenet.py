@@ -1,16 +1,3 @@
-"""
-Model Name: RDWT + TCFormer - Temporal Convolutional Transformer for EEG-Based Motor Imagery Decoding
-
-Repository:
-Original implementation available at: https://github.com/altaheri/TCFormer
-and succesive implementation at: https://github.com/Bonomo31/RatioWaveNet2
-
-Note:
-- This version adds RDWT level-dropout (per-level), branch-dropout (per-parallel frontend),
-  optional spread-loss to separate scales, and small jitter on initial scales to break symmetry.
-- It also fixes a Rearrange typo and minor shape/device robustness around soft-thresholding.
-"""
-
 # Core Libraries
 import torch
 from torch import nn, Tensor
@@ -25,7 +12,6 @@ from .modules import CausalConv1d, Conv1dWithConstraint
 from .channel_group_attention import ChannelGroupAttention
 from utils.weight_initialization import glorot_weight_zero_bias
 from utils.latency  import measure_latency
-
 
 # --- RDWT front-end (PyTorch) -----------------------------------------------
 import torch.nn.functional as F
@@ -137,7 +123,7 @@ class RDWTFrontEnd(nn.Module):
         self.temp = torch.tensor(float(new_temp), dtype=self.temp.dtype, device=self.temp.device)
 
     def regularization_loss(self) -> Tensor:
-        """Ritorna l’ultima reg-loss calcolata in forward (0 se disattivata)."""
+        """Ritorna l'ultima reg-loss calcolata in forward (0 se disattivata)."""
         return self._last_reg_loss
 
     def forward(self, x: Tensor) -> Tensor:
@@ -154,18 +140,18 @@ class RDWTFrontEnd(nn.Module):
 
         # regularizzazioni (disattive se non richieste)
         reg = torch.tensor(0.0, device=device, dtype=dtype)
-
+        
         # barrier vicino ai bordi [1, Smax]
         if self.use_spread_loss or self.l2_on_logscale > 0:
             k = 4.0
             left  = torch.exp(-k * (s - 1.0))
             right = torch.exp(-k * (self.max_scale - s))
             reg = reg + 2e-3 * (left.mean() + right.mean())
-
+        
         # L2 su (z - z_mu)
         if self.l2_on_logscale > 0:
             reg = reg + self.l2_on_logscale * torch.mean((self.z - self.z_mu) ** 2)
-
+        
         # spread loss (evita scale troppo vicine)
         if self.use_spread_loss and self.spread_lambda > 0:
             diffs = (s.view(-1,1) - s.view(1,-1)).abs() + 1e-6
@@ -186,6 +172,7 @@ class RDWTFrontEnd(nn.Module):
             # filtri low/high per la scala corrente
             lo = self._l1norm(self._resample(self.lo_proto, s[i].item(), self.K))
             hi = self._l1norm(self._resample(self.hi_proto, s[i].item(), self.K))
+
             # (C,1,K) — stesso filtro per tutti i canali, conv depthwise
             lo_w = lo.view(1, 1, self.K).repeat(C, 1, 1)
             hi_w = hi.view(1, 1, self.K).repeat(C, 1, 1)
@@ -220,12 +207,10 @@ class RDWTFrontEnd(nn.Module):
         y = a_prev + details_sum  # (B,C,T)
         return y
 
-
 class ParallelRDWTFrontEnd(nn.Module):
     """Parallel ensemble of :class:`RDWTFrontEnd` blocks with learnable fusion.
     Supports branch-dropout and initial jitter of scales to break symmetry.
     """
-
     def __init__(
         self,
         level_choices,
@@ -247,7 +232,6 @@ class ParallelRDWTFrontEnd(nn.Module):
         init_jitter_std: float = 0.05,
     ) -> None:
         super().__init__()
-
         if isinstance(level_choices, int):
             level_choices = [level_choices]
         self.level_choices = tuple(int(l) for l in level_choices)
@@ -257,10 +241,9 @@ class ParallelRDWTFrontEnd(nn.Module):
         max_requested_level = max(self.level_choices)
         init_dilations = tuple(init_dilations)
         if len(init_dilations) < max_requested_level:
-            raise ValueError(
-                "`init_dilations` must provide at least as many entries as the maximum level "
-                f"requested ({max_requested_level})."
-            )
+            # Autopad: ripete l'ultima dilatazione finché basta
+            init_dilations = init_dilations + (init_dilations[-1],) * (max_requested_level - len(init_dilations))
+
 
         self.front_ends = nn.ModuleList(
             [
@@ -326,11 +309,62 @@ class ParallelRDWTFrontEnd(nn.Module):
 
         return (weights * stacked).sum(dim=0)
 
+# === NUOVA ARCHITETTURA IBRIDA ===
+class HybridParallelFrontEnd(nn.Module):
+    """
+    Front-end ibrido che combina segnale RAW e preprocessato RDWT.
+    Supporta diversi metodi di fusione: learned, attention, concatenation.
+    """
+    def __init__(self, rdwt_config, fusion_method="learned"):
+        super().__init__()
+        
+        # Ramo 1: Segnale RAW (identity/bypass)
+        self.raw_branch = nn.Identity()
+        
+        # Ramo 2: RDWT preprocessing
+        self.rdwt_branch = ParallelRDWTFrontEnd(**rdwt_config)
+        
+        # Meccanismo di fusione
+        self.fusion_method = fusion_method
+        self.fusion_weights = None
+        self.channel_attention = None
+        
+        if fusion_method == "learned":
+            self.fusion_weights = nn.Parameter(torch.ones(2))  # Pesi apprendibili
+        elif fusion_method == "attention":
+            self.channel_attention = nn.Sequential(
+                nn.AdaptiveAvgPool1d(1),
+                nn.Conv1d(2, 2, kernel_size=1),
+                nn.Softmax(dim=1)
+            )
+        elif fusion_method == "concat":
+            # Niente layer aggiuntivi per concatenazione
+            pass
+        else:
+            raise ValueError(f"Metodo di fusione non supportato: {fusion_method}")
+    
+    def forward(self, x):
+        raw_out = self.raw_branch(x)      # (B,C,T)
+        rdwt_out = self.rdwt_branch(x)    # (B,C,T)
+        
+        if self.fusion_method == "learned":
+            weights = torch.softmax(self.fusion_weights, dim=0)
+            return weights[0] * raw_out + weights[1] * rdwt_out
+        
+        elif self.fusion_method == "attention":
+            # Calcola attention weights basati sul contenuto
+            stacked = torch.stack([raw_out, rdwt_out], dim=1)  # (B,2,C,T)
+            # Media temporale per ottenere descriptor per canale
+            channel_descriptors = stacked.mean(dim=-1)  # (B,2,C)
+            attn_weights = self.channel_attention(channel_descriptors)  # (B,2,C)
+            return (stacked * attn_weights.unsqueeze(-1)).sum(dim=1)
+        
+        else:  # concatenation
+            return torch.cat([raw_out, rdwt_out], dim=1)  # (B,2*C,T)
 
 class MultiKernelConvBlock(nn.Module):
     """
     Multi-Kernel Convolution Block for EEG Feature Extraction.
-
     This block applies multiple temporal convolutions with different kernel sizes,
     followed by channel-wise and temporal processing with optional group attention.
     """
@@ -347,7 +381,6 @@ class MultiKernelConvBlock(nn.Module):
         use_group_attn: bool = True,
     ):
         super().__init__()
-
         # --- 1. one temporal conv per kernel -----------------
         self.rearrange = Rearrange("b c seq -> b 1 c seq")
         self.temporal_convs = nn.ModuleList([
@@ -359,11 +392,10 @@ class MultiKernelConvBlock(nn.Module):
             )
             for k in temp_kernel_lengths
         ])
-
         # --- 2. shared processing after concatenation --------
         n_groups = len(temp_kernel_lengths)
         self.d_model = d_group * n_groups
-
+        
         # Channel Reduction Stage 1 (disattivata per default)
         self.use_channel_reduction_1  = False
         if self.use_channel_reduction_1:
@@ -371,7 +403,7 @@ class MultiKernelConvBlock(nn.Module):
                 nn.Conv2d(F1 * n_groups, self.d_model, (1, 1), bias=False, groups=n_groups),
                 nn.BatchNorm2d(self.d_model),
             )
-
+        
         # Depth-wise convolution across EEG channels
         F2 = self.d_model * D if self.use_channel_reduction_1 else F1 * n_groups * D
         self.channel_DW_conv = nn.Sequential(
@@ -381,7 +413,7 @@ class MultiKernelConvBlock(nn.Module):
         )
         self.pool1 = nn.AvgPool2d((1, pool_length_1))
         self.drop1 = nn.Dropout(dropout)
-
+        
         # Channel Reduction Stage 2: Grouped Pointwise (1×1) Conv (F2 → d_model)
         self.use_channel_reduction_2 = (self.d_model != F2)
         if self.use_channel_reduction_2:
@@ -389,14 +421,14 @@ class MultiKernelConvBlock(nn.Module):
                 nn.Conv2d(F2, self.d_model, (1, 1), bias=False, groups=n_groups),
                 nn.BatchNorm2d(self.d_model),
             )
-
+        
         # Grouped temporal convolution (1 × 16) per group
         self.temporal_conv_2 = nn.Sequential(
             nn.Conv2d(self.d_model, self.d_model, (1, 16), padding='same', bias=False, groups=n_groups),
             nn.BatchNorm2d(self.d_model),
             nn.ELU(),
         )
-
+        
         # Grouped attention opzionale
         self.use_group_attn = False if n_groups == 1 else use_group_attn
         if self.use_group_attn:
@@ -404,10 +436,9 @@ class MultiKernelConvBlock(nn.Module):
                 in_channels=self.d_model,
                 num_groups=n_groups,
             )
-
         self.pool2 = nn.AvgPool2d((1, pool_length_2))
         self.drop2 = nn.Dropout(dropout)
-
+        
         # Initialize weights
         glorot_weight_zero_bias(self)
 
@@ -416,28 +447,23 @@ class MultiKernelConvBlock(nn.Module):
         x = self.rearrange(x)         # (B, 1, C, T)
         feats = [conv(x) for conv in self.temporal_convs]  # list of (B, F1, C, T')
         x = torch.cat(feats, dim=1)   # [B, F1 * n_groups, C, T]
-
+        
         # --- 2. shared processing after concatenation --------
         if self.use_channel_reduction_1:
             x = self.channel_reduction_1(x)
-
         x = self.channel_DW_conv(x)
         x = self.pool1(x)
         x = self.drop1(x)
-
+        
         if self.use_channel_reduction_2:
             x = self.channel_reduction_2(x)
-
         x = self.temporal_conv_2(x)
-
+        
         if self.use_group_attn:
             x = x + self.group_attn(x)  # Residual
-
         x = self.pool2(x)
         x = self.drop2(x)
-
         return x.squeeze(2)
-
 
 class TCNBlock(nn.Module):
     def __init__(self, kernel_length: int = 4, n_filters: int = 32, dilation: int = 1,
@@ -448,15 +474,12 @@ class TCNBlock(nn.Module):
         self.bn1 = nn.BatchNorm1d(n_filters)
         self.nonlinearity1 = nn.ELU()
         self.drop1 = nn.Dropout(dropout)
-
         self.conv2 = CausalConv1d(n_filters, n_filters, kernel_size=kernel_length,
                                   dilation=dilation, groups=n_groups)
         self.bn2 = nn.BatchNorm1d(n_filters)
         self.nonlinearity2 = nn.ELU()
         self.drop2 = nn.Dropout(dropout)
-
         self.nonlinearity3 = nn.ELU()
-
         nn.init.constant_(self.conv1.bias, 0.0)
         nn.init.constant_(self.conv2.bias, 0.0)
 
@@ -465,7 +488,6 @@ class TCNBlock(nn.Module):
         x = self.drop2(self.nonlinearity2(self.bn2(self.conv2(x))))
         x = self.nonlinearity3(input + x)
         return x
-
 
 class TCN(nn.Module):
     def __init__(self, depth: int = 2, kernel_length: int = 4, n_filters: int = 32,
@@ -480,7 +502,6 @@ class TCN(nn.Module):
         for blk in self.blocks:
             x = blk(x)
         return x
-
 
 class ClassificationHead(nn.Module):
     """
@@ -499,7 +520,6 @@ class ClassificationHead(nn.Module):
         super().__init__()
         self.n_groups   = n_groups
         self.n_classes  = n_classes
-
         # point-wise (1 × 1) grouped conv = class projection per group
         self.linear = Conv1dWithConstraint(
             in_channels=d_features,
@@ -517,7 +537,6 @@ class ClassificationHead(nn.Module):
         x = x.view(x.size(0), self.n_groups, self.n_classes).mean(dim=1)
         return x
 
-
 class TCNHead(nn.Module):
     def __init__(self, d_features: int = 64, n_groups: int = 1, tcn_depth: int = 2,
                  kernel_length: int = 4,  dropout_tcn: float = 0.3, n_classes: int = 4):
@@ -530,100 +549,19 @@ class TCNHead(nn.Module):
             n_groups=n_groups,
             n_classes=n_classes,
         )
+
     def forward(self, x):
         x = self.tcn(x)
         x = x[:, :, -1:]
         x = self.classifier(x)
         return x
 
-
-# ------------------------------------------------------------------------------- #
-# MSCFormer (ablation)
-# ------------------------------------------------------------------------------- #
-
-class TCFormerModule_ablation(nn.Module):
-    def __init__(self,
-        n_channels: int,
-        n_classes: int,
-        F1: int = 16,
-        temp_kernel_lengths=(16, 32, 64),
-        pool_length_1: int = 8,
-        pool_length_2: int = 7,
-        D: int = 2,
-        dropout_conv: float = 0.3,
-        d_group: int = 16,
-        tcn_depth: int = 2,
-        kernel_length_tcn: int = 4,
-        dropout_tcn: float = 0.3,
-        use_group_attn: bool = True,
-        # --- RDWT params ---
-        use_rdwt: bool = True,
-        rdwt_levels: int = 4,
-        rdwt_level_choices=tuple(range(2, 11)),
-        rdwt_base_kernel_len: int = 16,
-        rdwt_init_dilations=(1.5, 5 / 3, 7 / 4, 9 / 5, 11 / 6, 13 / 7, 15 / 8, 17 / 9, 19 / 10, 21 / 11),
-        rdwt_soft_threshold: bool = True,
-        rdwt_threshold_init: float = 0.0,
-        rdwt_max_scale: float = 4.0,
-        rdwt_l2_on_logscale: float = 0.0,
-        rdwt_use_spread_loss: bool = True,
-        rdwt_spread_lambda: float = 5e-3,
-        rdwt_spread_gamma: float = 4.0,
-        rdwt_temp_init: float = 0.5,
-        # RDWT regularization/exploration
-        rdwt_level_dropout_p: float = 0.30,
-        rdwt_level_dropout_mode: str = "per_sample",
-        rdwt_branch_drop_prob: float = 0.15,
-        rdwt_init_jitter_std: float = 0.05,
-    ):
-        super().__init__()
-        self.n_groups = len(temp_kernel_lengths)
-
-        # RDWT (opzionale)
-        self.use_rdwt = use_rdwt
-        if self.use_rdwt:
-            if rdwt_level_choices is None:
-                level_choices = (rdwt_levels,)
-            else:
-                level_choices = tuple(int(l) for l in rdwt_level_choices)
-            self.rdwt = ParallelRDWTFrontEnd(
-                level_choices=level_choices,
-                base_kernel_len=rdwt_base_kernel_len,
-                init_dilations=rdwt_init_dilations,
-                use_soft_threshold=rdwt_soft_threshold,
-                threshold_init=rdwt_threshold_init,
-                max_scale=rdwt_max_scale,
-                l2_on_logscale=rdwt_l2_on_logscale,
-                use_spread_loss=rdwt_use_spread_loss,
-                spread_lambda=rdwt_spread_lambda,
-                spread_gamma=rdwt_spread_gamma,
-                temp_init=rdwt_temp_init,
-                level_dropout_p=rdwt_level_dropout_p,
-                level_dropout_mode=rdwt_level_dropout_mode,
-                branch_drop_prob=rdwt_branch_drop_prob,
-                init_jitter_std=rdwt_init_jitter_std,
-            )
-
-        self.conv_block = MultiKernelConvBlock(
-            n_channels, temp_kernel_lengths, F1, D,
-            pool_length_1, pool_length_2, dropout_conv, d_group, use_group_attn
-        )
-        self.tcn_head = TCNHead(d_group*(self.n_groups), self.n_groups, tcn_depth,
-                                kernel_length_tcn, dropout_tcn, n_classes)
-
-    def forward(self, x):  # x: (B,C,T)
-        if self.use_rdwt:
-            x = self.rdwt(x)
-        conv_features = self.conv_block(x)
-        out = self.tcn_head(conv_features)
-        return out
-
-
 class DropPath(nn.Module):
     """Stochastic Depth / DropPath (per-sample)"""
     def __init__(self, drop_prob: float = 0.0):
         super().__init__()
         self.drop_prob = drop_prob
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if self.drop_prob == 0. or not self.training:
             return x
@@ -632,7 +570,6 @@ class DropPath(nn.Module):
         random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
         random_tensor.floor_()
         return x.div(keep_prob) * random_tensor
-
 
 class _GQAttention(nn.Module):
     """Grouped‑Query Attention (num_q_heads >= num_kv_heads) with RoPE."""
@@ -667,7 +604,6 @@ class _GQAttention(nn.Module):
         out = out.transpose(1, 2).contiguous().view(B, T, C)
         return self.o_proj(out)
 
-
 def _build_rotary_cache(head_dim: int, seq_len: int, device: torch.device):
     """Return cos & sin tensors of shape (seq_len, head_dim)."""
     theta = 1.0 / (10000 ** (torch.arange(0, head_dim, 2, device=device).float() / head_dim))
@@ -677,7 +613,6 @@ def _build_rotary_cache(head_dim: int, seq_len: int, device: torch.device):
     cos, sin = emb.cos(), emb.sin()
     return cos, sin                                     # each: (seq, head_dim)
 
-
 def _rope(q: Tensor, k: Tensor, cos: Tensor, sin: Tensor):  # q/k: (B, h, T, d)
     def _rotate(x):                                        # half rotation
         x1, x2 = x[..., ::2], x[..., 1::2]
@@ -685,7 +620,6 @@ def _rope(q: Tensor, k: Tensor, cos: Tensor, sin: Tensor):  # q/k: (B, h, T, d)
     q_out = (q * cos) + (_rotate(q) * sin)
     k_out = (k * cos) + (_rotate(k) * sin)
     return q_out, k_out
-
 
 class _TransformerBlock(nn.Module):
     def __init__(self, d_model: int, q_heads: int, kv_heads: int, mlp_ratio: int = 2, dropout=0.4, drop_path_rate=0.25):
@@ -700,12 +634,13 @@ class _TransformerBlock(nn.Module):
             nn.Linear(mlp_ratio * d_model, d_model),
             nn.Dropout(dropout),
         )
+
     def forward(self, x: Tensor, cos: Tensor, sin: Tensor) -> Tensor:
         x = x + self.drop_path(self.attn(self.norm1(x), cos, sin))
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
 
-
+# === MODELLO PRINCIPALE CON FUSIONE IBRIDA ===
 class TCFormerModule(nn.Module):
     def __init__(self,
             n_channels: int,
@@ -726,8 +661,10 @@ class TCFormerModule(nn.Module):
             trans_dropout: float = 0.4,
             drop_path_max: float = 0.25,
             trans_depth: int = 5,
+            # -------- FRONTEND IBRIDO ----------
+            use_hybrid: bool = True,
+            fusion_method: str = "learned",  # "learned", "attention", "concat"
             # -------- RDWT ----------
-            use_rdwt: bool = True,
             rdwt_levels: int = 4,
             rdwt_level_choices=tuple(range(2, 11)),
             rdwt_base_kernel_len: int = 16,
@@ -749,36 +686,69 @@ class TCFormerModule(nn.Module):
         super().__init__()
         self.n_classes = n_classes
         self.n_groups = len(temp_kernel_lengths)
-        self.d_model = d_group*self.n_groups
-
-        # ---------- RDWT front-end ----------
-        self.use_rdwt = use_rdwt
-        if self.use_rdwt:
-            if rdwt_level_choices is None:
-                level_choices = (rdwt_levels,)
-            else:
-                level_choices = tuple(int(l) for l in rdwt_level_choices)
-            self.rdwt = ParallelRDWTFrontEnd(
-                level_choices=level_choices,
-                base_kernel_len=rdwt_base_kernel_len,
-                init_dilations=rdwt_init_dilations,
-                use_soft_threshold=rdwt_soft_threshold,
-                threshold_init=rdwt_threshold_init,
-                max_scale=rdwt_max_scale,
-                l2_on_logscale=rdwt_l2_on_logscale,
-                use_spread_loss=rdwt_use_spread_loss,
-                spread_lambda=rdwt_spread_lambda,
-                spread_gamma=rdwt_spread_gamma,
-                temp_init=rdwt_temp_init,
-                level_dropout_p=rdwt_level_dropout_p,
-                level_dropout_mode=rdwt_level_dropout_mode,
-                branch_drop_prob=rdwt_branch_drop_prob,
-                init_jitter_std=rdwt_init_jitter_std,
+        self.d_model = d_group * self.n_groups
+        
+        # ---------- FRONTEND IBRIDO ----------
+        self.use_hybrid = use_hybrid
+        self.fusion_method = fusion_method
+        
+        if self.use_hybrid:
+            # Configurazione RDWT per il ramo preprocessing
+            rdwt_config = {
+                'level_choices': rdwt_level_choices,
+                'base_kernel_len': rdwt_base_kernel_len,
+                'init_dilations': rdwt_init_dilations,
+                'use_soft_threshold': rdwt_soft_threshold,
+                'threshold_init': rdwt_threshold_init,
+                'max_scale': rdwt_max_scale,
+                'l2_on_logscale': rdwt_l2_on_logscale,
+                'use_spread_loss': rdwt_use_spread_loss,
+                'spread_lambda': rdwt_spread_lambda,
+                'spread_gamma': rdwt_spread_gamma,
+                'temp_init': rdwt_temp_init,
+                'level_dropout_p': rdwt_level_dropout_p,
+                'level_dropout_mode': rdwt_level_dropout_mode,
+                'branch_drop_prob': rdwt_branch_drop_prob,
+                'init_jitter_std': rdwt_init_jitter_std,
+            }
+            
+            self.hybrid_frontend = HybridParallelFrontEnd(
+                rdwt_config=rdwt_config,
+                fusion_method=fusion_method
             )
+            
+            # Calcola i canali effettivi in base al metodo di fusione
+            if fusion_method == "concat":
+                effective_channels = n_channels * 2
+            else:
+                effective_channels = n_channels
+        else:
+            effective_channels = n_channels
+            # Usa solo RDWT se specificato (per backward compatibility)
+            use_rdwt = hasattr(self, 'use_rdwt') and self.use_rdwt
+            if use_rdwt:
+                self.rdwt_branch = ParallelRDWTFrontEnd(
+                    level_choices=rdwt_level_choices,
+                    base_kernel_len=rdwt_base_kernel_len,
+                    init_dilations=rdwt_init_dilations,
+                    use_soft_threshold=rdwt_soft_threshold,
+                    threshold_init=rdwt_threshold_init,
+                    max_scale=rdwt_max_scale,
+                    l2_on_logscale=rdwt_l2_on_logscale,
+                    use_spread_loss=rdwt_use_spread_loss,
+                    spread_lambda=rdwt_spread_lambda,
+                    spread_gamma=rdwt_spread_gamma,
+                    temp_init=rdwt_temp_init,
+                    level_dropout_p=rdwt_level_dropout_p,
+                    level_dropout_mode=rdwt_level_dropout_mode,
+                    branch_drop_prob=rdwt_branch_drop_prob,
+                    init_jitter_std=rdwt_init_jitter_std,
+                )
+            else:
+                self.rdwt_branch = None
 
         self.rearrange = Rearrange("b c seq -> b seq c")
-
-        self.conv_block = MultiKernelConvBlock(n_channels, temp_kernel_lengths, F1, D,
+        self.conv_block = MultiKernelConvBlock(effective_channels, temp_kernel_lengths, F1, D,
                                                pool_length_1, pool_length_2, dropout_conv,
                                                d_group, use_group_attn)
         self.mix = nn.Sequential(
@@ -795,20 +765,36 @@ class TCFormerModule(nn.Module):
                               drop_path_rate=drop_rates[i].item())
             for i in range(trans_depth)
         ])
-
+        
+        # Adatta la dimensionalità per la concatenazione finale
+        if self.use_hybrid and fusion_method == "concat":
+            final_d_group = d_group * 2  # Raddoppia per accomodare le features extra
+        else:
+            final_d_group = d_group
+            
         self.reduce = nn.Sequential(
             Rearrange("b t c -> b c t"),
-            nn.Conv1d(self.d_model, d_group, kernel_size=1, groups=1, bias=False),
-            nn.BatchNorm1d(d_group),
+            nn.Conv1d(self.d_model, final_d_group, kernel_size=1, groups=1, bias=False),
+            nn.BatchNorm1d(final_d_group),
             nn.SiLU(),
         )
-
-        self.tcn_head = TCNHead(d_group*(self.n_groups+1), (self.n_groups+1),
+        
+        # Calcola i gruppi finali per la testa TCN
+        if self.use_hybrid and fusion_method == "concat":
+            final_n_groups = self.n_groups + 2  # Gruppi originali + gruppo per features ibride
+        else:
+            final_n_groups = self.n_groups + 1
+            
+        self.tcn_head = TCNHead(final_d_group * final_n_groups, final_n_groups,
                                 tcn_depth, kernel_length_tcn, dropout_tcn, n_classes)
 
     def forward(self, x):      # x: [B, C, T]
-        if hasattr(self, "use_rdwt") and self.use_rdwt:
-            x = self.rdwt(x)   # (B,C,T) -> (B,C,T)
+        # Frontend processing
+        if self.use_hybrid:
+            x = self.hybrid_frontend(x)   # (B,C,T) o (B,2*C,T) in base alla fusione
+        else:
+            if hasattr(self, 'rdwt_branch') and self.rdwt_branch is not None:
+                x = self.rdwt_branch(x)   # (B,C,T)
 
         conv_features = self.conv_block(x)
         B, C, T = conv_features.shape
@@ -818,7 +804,7 @@ class TCFormerModule(nn.Module):
         for blk in self.transformer:
             tokens = blk(tokens, cos, sin)
         tran_features = self.reduce(tokens)
-
+        
         features = torch.cat((conv_features, tran_features), dim=1)
         out = self.tcn_head(features)
         return out
@@ -831,11 +817,9 @@ class TCFormerModule(nn.Module):
             self._cos, self._sin = cos.to(device), sin.to(device)
         return self._cos, self._sin
 
-
 # -----------------------------------------------------------------------------
 # 0.  helpers
 # -----------------------------------------------------------------------------
-
 def _xavier_zero_bias(module: nn.Module) -> None:
     """Apply Xavier‑uniform + zero bias to every conv/linear inside *module*."""
     for m in module.modules():
@@ -844,11 +828,9 @@ def _xavier_zero_bias(module: nn.Module) -> None:
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
 
-
 # -----------------------------------------------------------------------------
 # 1.  Rotary positional embedding utilities (defined above)
 # -----------------------------------------------------------------------------
-
 
 class RatioWaveNet(ClassificationModule):
     def __init__(self,
@@ -869,8 +851,10 @@ class RatioWaveNet(ClassificationModule):
         kv_heads: int = 4,
         trans_depth: int = 5,
         trans_dropout: float = 0.4,
+        # --- FRONTEND IBRIDO ---
+        use_hybrid: bool = True,
+        fusion_method: str = "learned",
         # --- RDWT params ---
-        use_rdwt: bool = True,
         rdwt_levels: int = 4,
         rdwt_level_choices=tuple(range(2, 11)),
         rdwt_base_kernel_len: int = 16,
@@ -906,8 +890,10 @@ class RatioWaveNet(ClassificationModule):
             use_group_attn=use_group_attn,
             q_heads=q_heads, kv_heads=kv_heads,
             trans_depth=trans_depth, trans_dropout=trans_dropout,
+            # FRONTEND IBRIDO
+            use_hybrid=use_hybrid,
+            fusion_method=fusion_method,
             # RDWT
-            use_rdwt=use_rdwt,
             rdwt_levels=rdwt_levels,
             rdwt_level_choices=rdwt_level_choices,
             rdwt_base_kernel_len=rdwt_base_kernel_len,
@@ -930,7 +916,6 @@ class RatioWaveNet(ClassificationModule):
     @staticmethod
     def benchmark(input_shape, device="cuda:0", warmup=100, runs=500):
         return measure_latency(RatioWaveNet(22, 4), input_shape, device, warmup, runs)
-
 
 if __name__ == "__main__":
     # Example usage: run benchmark with dummy input shape (batch, channels, time)
