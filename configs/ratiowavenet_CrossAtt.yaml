@@ -1,0 +1,108 @@
+# general
+dataset_name: ""   # options: "bcic2a", "bcic2b", "bcic3", "reh_mi", or "hgd".
+                   # Note: This value will be overridden if specified in train_test.py
+                   # or if passed as a command-line argument (e.g., --dataset bcic2a).
+                   
+subject_ids: "all" # options: "all", an integer (e.g., 1), or a list of integers (e.g., [1, 2, 3]).
+max_epochs: 1000 
+max_epochs_2b: 500 # for bcic2b
+max_epochs_loso: 125  
+max_epochs_loso_hgd: 77  
+seed: 0 # Random seed for reproducibility. 
+
+# preprocessing
+z_scale: True 
+interaug: True 
+preprocessing:
+  bcic2a:
+    sfreq: 250 
+    low_cut: null 
+    high_cut: null 
+    start: 0.0  
+    stop: 0.0 
+    batch_size: 32 
+  bcic2b:
+    sfreq: 250
+    low_cut: null
+    high_cut: null
+    start: 0.0
+    stop: -0.5 
+    batch_size: 32
+  bcic3:
+    sfreq: 100
+    low_cut: 0
+    high_cut: 40
+    start: 0.0
+    stop: 0.0
+    batch_size: 28
+    channel_selection: True
+  reh_mi:
+    sfreq: 128
+    low_cut: 4
+    high_cut: 50
+    start: 0.0
+    stop: 0.0
+    batch_size: 32
+  hgd:
+    sfreq: 250
+    low_cut: 4
+    high_cut: null
+    start: 0.0 
+    stop: 0.0
+    batch_size: 32
+    remove_artifacts: True
+
+# model
+model: "RatioWaveNet_CrossAtt"
+model_kwargs:
+  F1: 32 
+  temp_kernel_lengths: [20, 32, 64]
+  d_group: 16
+  D: 2
+  pool_length_1: 8  
+  pool_length_2: 7  
+  dropout_conv: 0.4
+  use_group_attn: True 
+  fusion_method: learned
+  #gate_granularity: channel # options: batch, channel, element
+  #gate_tau_init: 0.5
+  #gate_l0_lambda: 0.0
+  gate_initial_bias: -2.0
+  #gate_tau: 0.5
+
+  # Transformer parameters (Grouped query attention paramerters)
+  q_heads : 4 
+  kv_heads : 2 # number of kv groups
+  trans_depth: 5
+  trans_dropout: 0.4  # 0.4 and path drop = 0.25
+
+  # TCN_head parameters 
+  tcn_depth: 2
+  kernel_length_tcn: 4
+  dropout_tcn: 0.3 
+  
+  lr: 0.0009 
+  beta_1: 0.5 
+  weight_decay: 0.001 
+  optimizer: "adam"
+  scheduler: True
+  warmup_epochs: 20  
+  warmup_epochs_loso: 3
+  
+  # RDWT parameters
+  use_rdwt: true
+  rdwt_levels: 4
+  #rdwt_level_choices: [2, 3, 4, 5, 6, 7, 8, 9, 10]
+  rdwt_base_kernel_len: 16
+  rdwt_init_dilations: [1.5, 1.6667, 1.75, 1.8]
+  #rdwt_init_dilations: [1.5, 1.6667, 1.75, 1.8, 1.8333, 1.8571, 1.875, 1.8889, 1.9, 1.9091]
+  rdwt_soft_threshold: true
+  rdwt_threshold_init: 0.02
+  rdwt_max_scale: 4.0
+  rdwt_l2_on_logscale: 1e-5        # metti 1e-5 se vuoi leggera reg.
+  rdwt_use_spread_loss: false     # true se aggiungi la reg-loss al training
+  rdwt_spread_lambda: 3e-3
+  rdwt_spread_gamma: 5.0
+  rdwt_temp_init: 0.8
+  rdwt_level_dropout_p: 0.15
+  rdwt_branch_drop_prob: 0.10

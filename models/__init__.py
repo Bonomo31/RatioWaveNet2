@@ -10,3 +10,4 @@ from .ctnet import CTNet
 from .mscformer import MSCFormer
 from .eegdeformer import EEGDeformer
 from .ratiowavenet import RatioWaveNet
+from .ratiowavenet_CrossAtt import RatioWaveNet_CrossAtt

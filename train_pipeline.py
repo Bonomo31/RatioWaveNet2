@@ -97,15 +97,21 @@ def train_and_test(config):
         trainer.fit(model, datamodule=datamodule)
         train_times.append((time.time() - st_train) / 60) # minutes
         
-        rdwt_summary = getattr(model, "rdwt_summary", None)
-        if rdwt_summary:
-            rdwt_summaries[subject_id] = list(rdwt_summary)
+        # --- BLOCCO RDWT SPOSTATO ---
 
         # ---------------- TEST -----------------
         st_test = time.time()
-        test_results = trainer.test(model, datamodule)
+        test_results = trainer.test(model, datamodule) # Questo esegue on_test_epoch_end
         test_duration = time.time() - st_test
         test_times.append(test_duration)
+
+        # --- INCOLLATO E MODIFICATO IL BLOCCO QUI ---
+        rdwt_summary = getattr(model, "rdwt_summary", None)
+        if rdwt_summary:
+            rdwt_summaries[subject_id] = list(rdwt_summary)
+            # --- QUESTA È LA PRINT CHE VOLEVI ---
+            print(f"--- Subject {subject_id} | Avg. RDWT Gate Usage: {rdwt_summary[0]:.4f} ---")
+        # --- FINE MODIFICA ---
 
         # ---------------- LATENCY --------------
         # Deduce input shape from one sample of the test dataset
@@ -169,7 +175,7 @@ def parse_arguments():
     parser.add_argument("--model", type=str, default="tcformer",
         help = "Name of the model to use. Options:\n"
                "tcformer, atcnet, d-atcnet, atcnet_2_0, eegnet, shallownet, basenet\n"
-                "eegtcnet, eegconformer, tsseffnet, eegdeformer, sst_dpn, ctnet, mscformer"
+                "eegtcnet, eegconformer, tsseffnet, eegdeformer, sst_dpn, ctnet, mscformer, ratiowavenet, ratiowavenet_crossatt"
     )        
     parser.add_argument("--dataset", type=str, default="bcic2a", 
         help="Name of the dataset to use."
@@ -198,9 +204,21 @@ def run():
     args = parse_arguments()
      
     # load config
-    config_path = os.path.join(CONFIG_DIR, f"{args.model}.yaml") 
-    with open(config_path) as f:    
+    #config_path = os.path.join(CONFIG_DIR, f"{args.model}.yaml") 
+    #with open(config_path) as f:    
+    #    config = yaml.safe_load(f)
+    
+    # load config SEMPRE da ratiowavenet.yaml,
+    # ma usa il modello passato da CLI
+    fixed_cfg_path = CONFIG_DIR / "ratiowavenet.yaml"
+    if not fixed_cfg_path.exists():
+        raise FileNotFoundError(f"Config non trovato: {fixed_cfg_path}")
+    with open(fixed_cfg_path) as f:
         config = yaml.safe_load(f)
+
+    # forza il nome del modello al valore passato da CLI (es. ratiowavenet2)
+    config["model"] = args.model.lower()
+
 
     # Adjust training parameters based on LOSO setting
     if args.loso:
