@@ -1,5 +1,5 @@
 ########
-# RatioWaveNet: Subject-Adaptive RDWT Frontend for EEG Classification
+# RatioWaveNet: Cross-Attention Channel Adaptive RDWT Frontend for EEG Classification
 ########
 
 # Core Libraries
@@ -19,6 +19,99 @@ from utils.latency  import measure_latency
 
 # --- RDWT front-end (PyTorch) -----------------------------------------------
 import torch.nn.functional as F
+
+
+class ChannelCrossAttention(nn.Module):
+    """
+    Cross-Attention sui CANALI prima del RDWT.
+    Costruisce una matrice di mixing A (C×C) data-driven a partire dalla
+    (co)correlazione tra canali lungo T, poi applica y = A @ x.
+    y: (B,C,T) con residuo/gate: y = (1 - beta)*x + beta*(A @ x)
+
+    Parametri chiave:
+      - temperature: softmax temperature per affinare/ammorbidire le pesature
+      - add_identity: quanto peso predefinito dare alla diagonale (stabilità)
+      - pool_t: fattore di avg-pooling temporale PRIMA di stimare A (robustezza)
+      - gate_init: logit iniziale di beta (sigmoid); <0 => parte prudente
+    """
+    def __init__(
+        self,
+        n_channels: int,
+        temperature: float = 0.5,
+        dropout: float = 0.1,
+        add_identity: float = 0.10,
+        pool_t: int = 4,
+        whiten: bool = True,
+        gate_init: float = -1.0,
+        eps: float = 1e-5,
+    ):
+        super().__init__()
+        self.C = int(n_channels)
+        self.temperature = nn.Parameter(torch.tensor(float(temperature)))
+        self.add_identity = float(add_identity)
+        self.pool_t = int(max(1, pool_t))
+        self.whiten = bool(whiten)
+        self.eps = float(eps)
+
+        # scala per i logit dell'attenzione e gate residuo
+        self.scale = nn.Parameter(torch.tensor(1.0))
+        self.beta_logit = nn.Parameter(torch.tensor(float(gate_init)))
+        self.dropA = nn.Dropout(dropout)
+
+        # identità per stabilità
+        self.register_buffer("I", torch.eye(self.C), persistent=False)
+
+    def _temporal_pool(self, x: Tensor) -> Tensor:
+        # x: (B,C,T) -> (B,C,T') con avg-pooling temporale (se pool_t>1)
+        if self.pool_t <= 1:
+            return x
+        # padding 'same' approx per non perdere coda
+        pad = (0, (self.pool_t - (x.shape[-1] % self.pool_t)) % self.pool_t)
+        if pad[1] > 0:
+            x = F.pad(x, pad)
+        return F.avg_pool1d(x, kernel_size=self.pool_t, stride=self.pool_t, ceil_mode=False)
+
+    def _whiten(self, x: Tensor) -> Tensor:
+        # standardizza per canale lungo T
+        if not self.whiten:
+            return x
+        mu = x.mean(dim=-1, keepdim=True)
+        sd = x.std(dim=-1, keepdim=True) + self.eps
+        return (x - mu) / sd
+
+    def forward(self, x: Tensor) -> Tensor:
+        """
+        x: (B,C,T) -> y: (B,C,T)
+        """
+        B, C, T = x.shape
+        assert C == self.C, f"ChannelCrossAttention attesa C={self.C}, trovato {C}"
+
+        # 1) pooling + (opzionale) whitening
+        xp = self._temporal_pool(x)                # (B,C,T')
+        xn = self._whiten(xp)                      # (B,C,T')
+
+        # 2) stima correlazione/covarianza normalizzata tra canali
+        #    Sigma[b,c1,c2] = <xn[b,c1,:], xn[b,c2,:]> / T'
+        Tprime = xn.shape[-1]
+        Sigma = torch.einsum('bct,bdt->bcd', xn, xn) / float(Tprime)  # (B,C,C)
+
+        # 3) logit dell'attenzione + stabilizzazione con identità
+        logits = self.scale * Sigma / (self.temperature.abs() + 1e-6)  # (B,C,C)
+        if self.add_identity > 0:
+            logits = logits + self.add_identity * self.I  # bias diagonale
+
+        # 4) matrice di mixing A (riga-stocastica): softmax sugli "sorgenti" (dim=-1)
+        A = torch.softmax(logits, dim=-1)                  # (B,C,C)
+        A = self.dropA(A)
+
+        # 5) applica mixing ai segnali crudi (senza whiten) lungo la dimensione canale
+        y_mix = torch.einsum('bcd,bdt->bct', A, x)         # (B,C,T)
+
+        # 6) residuo controllato da gate beta
+        beta = torch.sigmoid(self.beta_logit)              # scalare ∈ (0,1)
+        y = (1.0 - beta) * x + beta * y_mix
+        return y
+
 
 
 class RDWTFrontEnd(nn.Module):
@@ -806,6 +899,14 @@ class TCFormerModule(nn.Module):
             trans_dropout: float = 0.4,
             drop_path_max: float = 0.25,
             trans_depth: int = 5,
+            # ===== NUOVI PARAMETRI (Cross-Attn canali prima del RDWT) =====
+            use_chan_cross_attn: bool = True,
+            cca_temperature: float = 0.5,
+            cca_dropout: float = 0.10,
+            cca_add_identity: float = 0.10,
+            cca_pool_t: int = 4,
+            cca_gate_init: float = -1.0,
+            cca_whiten: bool = True,
             # -------- FRONTEND IBRIDO ----------
             use_hybrid: bool = True,
             fusion_method: str = "learned",  # "learned", "attention", "concat"
@@ -831,6 +932,20 @@ class TCFormerModule(nn.Module):
             rdwt_init_jitter_std: float = 0.05,
         ):
         super().__init__()
+        self.use_chan_cross_attn = bool(use_chan_cross_attn)
+        if self.use_chan_cross_attn:
+            self.chan_attn = ChannelCrossAttention(
+                n_channels=n_channels,
+                temperature=cca_temperature,
+                dropout=cca_dropout,
+                add_identity=cca_add_identity,
+                pool_t=cca_pool_t,
+                whiten=cca_whiten,
+                gate_init=cca_gate_init,
+            )
+        else:
+            self.chan_attn = nn.Identity()
+            
         self.n_classes = n_classes
         self.n_groups = len(temp_kernel_lengths)
         self.d_model = d_group * self.n_groups
@@ -863,7 +978,7 @@ class TCFormerModule(nn.Module):
             self.hybrid_frontend = HybridParallelFrontEnd(
                 rdwt_config=rdwt_config,
                 fusion_method=fusion_method,
-                gate_initial_bias=gate_initial_bias # Passa il nuovo parametro
+                gate_initial_bias=gate_initial_bias,  # Passa il nuovo parametro
             )
 
             # canali effettivi per il backbone
@@ -927,6 +1042,8 @@ class TCFormerModule(nn.Module):
 
     def forward(self, x):      # x: [B, C, T]
         # Frontend processing
+        if self.use_chan_cross_attn:
+            x = self.chan_attn(x) 
         if self.use_hybrid:
             x = self.hybrid_frontend(x)   # (B,C,T) o (B,2*C,T) in base alla fusione
             if hasattr(self.hybrid_frontend, "_gate_reg"):
@@ -993,6 +1110,14 @@ class RatioWaveNet(ClassificationModule):
         kv_heads: int = 4,
         trans_depth: int = 5,
         trans_dropout: float = 0.4,
+        # --- Cross-Attn canali prima del RDWT ---
+        use_chan_cross_attn: bool = True,
+        cca_temperature: float = 0.5,
+        cca_dropout: float = 0.10,
+        cca_add_identity: float = 0.10,
+        cca_pool_t: int = 4,
+        cca_gate_init: float = -1.0,
+        cca_whiten: bool = True,
         # --- FRONTEND IBRIDO ---
         use_hybrid: bool = True,
         fusion_method: str = "learned",
@@ -1034,10 +1159,18 @@ class RatioWaveNet(ClassificationModule):
             use_group_attn=use_group_attn,
             q_heads=q_heads, kv_heads=kv_heads,
             trans_depth=trans_depth, trans_dropout=trans_dropout,
+            # --- forward i nuovi parametri ---
+            use_chan_cross_attn=use_chan_cross_attn,
+            cca_temperature=cca_temperature,
+            cca_dropout=cca_dropout,
+            cca_add_identity=cca_add_identity,
+            cca_pool_t=cca_pool_t,
+            cca_gate_init=cca_gate_init,
+            cca_whiten=cca_whiten,
             # FRONTEND IBRIDO
             use_hybrid=use_hybrid,
             fusion_method=fusion_method,
-            gate_initial_bias=gate_initial_bias, # Passa il nuovo parametro
+            gate_initial_bias=gate_initial_bias,  # Passa il nuovo parametro
             # RDWT
             rdwt_levels=rdwt_levels,
             rdwt_level_choices=rdwt_level_choices,
@@ -1056,6 +1189,7 @@ class RatioWaveNet(ClassificationModule):
             rdwt_branch_drop_prob=rdwt_branch_drop_prob,
             rdwt_init_jitter_std=rdwt_init_jitter_std,
         )
+        # NOTA: kwargs viene passato al super()
         super().__init__(model, n_classes, **kwargs)
         
         # --- AGGIUNTA PER LOGGING ---
@@ -1080,31 +1214,25 @@ class RatioWaveNet(ClassificationModule):
         if hasattr(super(), "on_test_epoch_start"):
             super().on_test_epoch_start()
 
+    # --- METODO test_step CORRETTO ---
     def test_step(self, batch, batch_idx):
-        # Esegui il forward pass e calcola la loss
-        x, y = batch
-        y_hat = self.model(x) # Questo esegue TCFormerModule.forward()
-        loss = self.criterion(y_hat, y)
+        # 1. Chiama il test_step originale della classe base (ClassificationModule)
+        #    Questo calcolerà la loss, loggherà le metriche (acc, kappa, loss)
+        #    e aggiornerà la confusion matrix.
+        #    Assumiamo che ritorni la loss, come è standard.
+        loss = super().test_step(batch, batch_idx)
 
-        # Log metriche standard
-        self.test_acc(y_hat, y)
-        self.test_kappa(y_hat, y)
-        self.test_confmat.update(y_hat.detach().cpu(), y.detach().cpu())
-        self.log('test_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log('test_acc', self.test_acc, on_step=False, on_epoch=True, prog_bar=True)
-        self.log('test_kappa', self.test_kappa, on_step=False, on_epoch=True, prog_bar=True)
-
-        # Salva il valore del gate di questo batch
+        # 2. Ora eseguiamo la *nostra* logica aggiuntiva per salvare il gate
+        #    (self.model(x) è già stato chiamato dentro super().test_step)
         if hasattr(self.model, "_last_gate_mean"):
-            # Il gate ora è un singolo valore (non una media di batch),
-            # quindi lo prendiamo direttamente.
             gate_mean_val = self.model._last_gate_mean.detach()
-            # Lo aggiungiamo solo una volta per epoca (dato che è costante)
+            # Salviamo il valore solo per il primo batch (tanto è costante)
             if batch_idx == 0:
                 self.test_gate_values = torch.cat(
                     [self.test_gate_values, gate_mean_val.view(1)]
                 )
         
+        # 3. Ritorna la loss calcolata dal metodo base
         return loss
 
     def on_test_epoch_end(self):
