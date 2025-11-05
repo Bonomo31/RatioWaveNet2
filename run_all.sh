@@ -38,4 +38,17 @@ for model in "${models[@]}"; do
     done
 done
 
+# Ensemble TCN runs
+ensemble_datasets=("bcic2a" "bcic2b" "hgd")
+for dataset in "${ensemble_datasets[@]}"; do
+    for seed in "${seeds[@]}"; do
+        echo "Training TCN ensemble on $dataset (seed=$seed)"
+        nohup python ensemble_pipeline.py --datasets "$dataset" --seeds "$seed" \
+            --data-root results --results-root results --train-file train.npz --test-file test.npz \
+            --use-signal --target-length 128 --epochs 30 --batch-size 128 --gpu-id $gpu_id \
+            > log/ensemble_${dataset}_seed${seed}.log 2>&1 &
+        wait
+    done
+done
+
 echo "All experiments completed!"
