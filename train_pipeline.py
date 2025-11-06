@@ -22,6 +22,39 @@ from utils.seed import seed_everything
 # Define the path to the configuration directory
 CONFIG_DIR = Path(__file__).resolve().parent / "configs"
 
+from pytorch_lightning.callbacks import Callback
+
+class RDWTUsageLogger(Callback):
+    """
+    Accumula il valore del gate RDWT per batch durante il test
+    e lo espone come model.rdwt_summary = [avg_gate].
+    """
+    def on_test_start(self, trainer, pl_module):
+        pl_module._rdwt_gate_vals = []
+
+    def on_test_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+        # TCFormerModule salva l'ultimo valore del gate in _last_gate_mean
+        g = None
+        m = getattr(pl_module, "model", None)  # RatioWaveNet.wrap → TCFormerModule in pl_module.model
+        if m is not None and hasattr(m, "_last_gate_mean"):
+            val = m._last_gate_mean
+            try:
+                g = float(val.detach().mean().item())
+            except Exception:
+                pass
+        if g is not None:
+            pl_module._rdwt_gate_vals.append(g)
+
+    def on_test_end(self, trainer, pl_module):
+        if hasattr(pl_module, "_rdwt_gate_vals") and len(pl_module._rdwt_gate_vals) > 0:
+            avg_g = float(np.mean(pl_module._rdwt_gate_vals))
+            # Il tuo train_pipeline si aspetta una lista
+            pl_module.rdwt_summary = [avg_g]
+        else:
+            # Nessun valore raccolto (p.es. fusion != 'learned'): segnala 0.0
+            pl_module.rdwt_summary = [0.0]
+
+
 # Main training and testing pipeline
 def train_and_test(config):
      # Create result and checkpoints directories
@@ -79,7 +112,7 @@ def train_and_test(config):
                 else DDPStrategy(find_unused_parameters=True), 
             logger=False,
             enable_checkpointing=False,
-            callbacks=[metrics_callback]
+            callbacks=[metrics_callback, RDWTUsageLogger()],
         )
 
         # Instantiate datamodule and model

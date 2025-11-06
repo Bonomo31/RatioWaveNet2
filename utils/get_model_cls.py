@@ -3,8 +3,8 @@ import difflib
 
 from models import (
     TCFormer, ATCNet, BaseNet, EEGConformer, EEGNet, EEGTCNet,
-    ShallowNet, TSSEFFNet, CTNet, MSCFormer, EEGDeformer, RatioWaveNet,
-    RatioWaveNet_CrossAtt
+    ShallowNet, TSSEFFNet, CTNet, MSCFormer, EEGDeformer, RatioWaveNet, 
+    #RatioWaveNet_CrossAtt
 )
 
 model_dict = dict(
@@ -20,7 +20,7 @@ model_dict = dict(
     MSCFormer=MSCFormer,
     EEGDeformer=EEGDeformer,
     RatioWaveNet=RatioWaveNet,
-    RatioWaveNet_CrossAtt=RatioWaveNet_CrossAtt,
+    #RatioWaveNet_CrossAtt=RatioWaveNet_CrossAtt,
 )
 
 def _normalize(s: str) -> str:

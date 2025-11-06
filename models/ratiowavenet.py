@@ -361,7 +361,10 @@ class SubjectAdaptiveGate(nn.Module):
         super().__init__()
         self.tau = torch.tensor(float(tau))
         # UNICO parametro trainabile
-        self.logit = nn.Parameter(torch.tensor(float(initial_bias)))
+        #self.logit = nn.Parameter(torch.tensor(float(initial_bias)))
+        self.initial_bias = float(initial_bias)
+        self.logit = nn.Parameter(torch.tensor(self.initial_bias))
+
         
         # buffer per logging (per compatibilità con il tuo script)
         self.register_buffer("_last_g_mean", torch.tensor(0.0), persistent=False)
@@ -812,7 +815,7 @@ class TCFormerModule(nn.Module):
             # --- Nuovo parametro per SubjectAdaptiveGate ---
             gate_initial_bias: float = -2.0,
             # -------- RDWT ----------
-            rdwt_levels: int = 4,
+            #rdwt_levels: int = 4,
             rdwt_level_choices=tuple(range(2, 11)),
             rdwt_base_kernel_len: int = 16,
             rdwt_init_dilations=(1.5, 5 / 3, 7 / 4, 9 / 5, 11 / 6, 13 / 7, 15 / 8, 17 / 9, 19 / 10, 21 / 11),
@@ -938,6 +941,24 @@ class TCFormerModule(nn.Module):
             x = self.rdwt_branch(x)   # (B,C,T)
 
         conv_features = self.conv_block(x)
+#        
+#        if conv_features.ndim == 4:
+#            B, C, extra, T = conv_features.shape
+#            conv_features = conv_features.reshape(B, C * extra, T)
+#        elif conv_features.ndim == 3:
+#            B, C, T = conv_features.shape
+#        else:  # pragma: no cover - defensive branch for unexpected shapes
+#            raise ValueError(
+#                "RatioWaveNet expects convolutional features with 3 or 4 dimensions, "
+#                f"received tensor of shape {tuple(conv_features.shape)}."
+#            )
+#
+#        if conv_features.shape[1] != self.d_model:
+#            raise ValueError(
+#                "Mismatch between convolutional features and configured d_model. "
+#                f"Expected {self.d_model} channels, found {conv_features.shape[1]}"
+#            )
+#        
         B, C, T = conv_features.shape
 
         tokens = self.rearrange(self.mix(conv_features))
@@ -999,7 +1020,7 @@ class RatioWaveNet(ClassificationModule):
         # --- Nuovo parametro per SubjectAdaptiveGate ---
         gate_initial_bias: float = -2.0,
         # --- RDWT params ---
-        rdwt_levels: int = 4,
+        #rdwt_levels: int = 4,
         rdwt_level_choices=tuple(range(2, 11)),
         rdwt_base_kernel_len: int = 16,
         rdwt_init_dilations=(1.5, 5 / 3, 7 / 4, 9 / 5, 11 / 6, 13 / 7, 15 / 8, 17 / 9, 19 / 10, 21 / 11),
@@ -1039,7 +1060,7 @@ class RatioWaveNet(ClassificationModule):
             fusion_method=fusion_method,
             gate_initial_bias=gate_initial_bias, # Passa il nuovo parametro
             # RDWT
-            rdwt_levels=rdwt_levels,
+            #rdwt_levels=rdwt_levels,
             rdwt_level_choices=rdwt_level_choices,
             rdwt_base_kernel_len=rdwt_base_kernel_len,
             rdwt_init_dilations=rdwt_init_dilations,
@@ -1071,59 +1092,6 @@ class RatioWaveNet(ClassificationModule):
         return {
             "gate_l1": getattr(m, "_gate_reg", torch.tensor(0.0, device=device))
         }
-
-    # --- AGGIUNTA PER LOGGING ---
-    def on_test_epoch_start(self):
-        # Resetta l'accumulatore all'inizio del test di ogni soggetto
-        self.test_gate_values = torch.empty(0, device=self.device)
-        # Chiama il metodo base se esiste
-        if hasattr(super(), "on_test_epoch_start"):
-            super().on_test_epoch_start()
-
-    def test_step(self, batch, batch_idx):
-        # Esegui il forward pass e calcola la loss
-        x, y = batch
-        y_hat = self.model(x) # Questo esegue TCFormerModule.forward()
-        loss = self.criterion(y_hat, y)
-
-        # Log metriche standard
-        self.test_acc(y_hat, y)
-        self.test_kappa(y_hat, y)
-        self.test_confmat.update(y_hat.detach().cpu(), y.detach().cpu())
-        self.log('test_loss', loss, on_step=False, on_epoch=True, prog_bar=True)
-        self.log('test_acc', self.test_acc, on_step=False, on_epoch=True, prog_bar=True)
-        self.log('test_kappa', self.test_kappa, on_step=False, on_epoch=True, prog_bar=True)
-
-        # Salva il valore del gate di questo batch
-        if hasattr(self.model, "_last_gate_mean"):
-            # Il gate ora è un singolo valore (non una media di batch),
-            # quindi lo prendiamo direttamente.
-            gate_mean_val = self.model._last_gate_mean.detach()
-            # Lo aggiungiamo solo una volta per epoca (dato che è costante)
-            if batch_idx == 0:
-                self.test_gate_values = torch.cat(
-                    [self.test_gate_values, gate_mean_val.view(1)]
-                )
-        
-        return loss
-
-    def on_test_epoch_end(self):
-        # Calcola la media dei valori del gate per questo soggetto
-        # (Dato che salviamo solo un valore, la media è quel valore)
-        avg_gate = -1.0
-        if self.test_gate_values.numel() > 0:
-            avg_gate = self.test_gate_values.mean().item()
-        
-        # Salva il valore dove train_pipeline.py può trovarlo
-        self.rdwt_summary = [avg_gate]
-        
-        # Logga anche il valore (opzionale, ma utile)
-        self.log("test_avg_gate", avg_gate, on_epoch=True)
-
-        # Chiama il metodo base se esiste
-        if hasattr(super(), "on_test_epoch_end"):
-            super().on_test_epoch_end()
-    # --- FINE AGGIUNTA ---
 
     @staticmethod
     def benchmark(input_shape, device="cuda:0", warmup=100, runs=500):
