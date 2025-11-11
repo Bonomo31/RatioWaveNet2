@@ -20,14 +20,14 @@ preprocessing:
     high_cut: null 
     start: 0.0  
     stop: 0.0 
-    batch_size: 32 
+    batch_size: 48 
   bcic2b:
     sfreq: 250
     low_cut: null
     high_cut: null
     start: 0.0
     stop: -0.5 
-    batch_size: 32
+    batch_size: 48
   bcic3:
     sfreq: 100
     low_cut: 0
@@ -42,41 +42,36 @@ preprocessing:
     high_cut: 50
     start: 0.0
     stop: 0.0
-    batch_size: 32
+    batch_size: 48
   hgd:
     sfreq: 250
     low_cut: 4
     high_cut: null
     start: 0.0 
     stop: 0.0
-    batch_size: 32
+    batch_size: 48
     remove_artifacts: True
 
 # model
 model: "RatioWaveNet"
 model_kwargs:
-  F1: 32 #32 
+  F1: 32 
   temp_kernel_lengths: [20, 32, 64]
-  d_group: 16 #16
+  d_group: 16 
   D: 2
   pool_length_1: 8  
   pool_length_2: 7  
   dropout_conv: 0.4
   use_group_attn: True 
   fusion_method: learned
-  #gate_granularity: channel # options: batch, channel, element
-  #gate_tau_init: 0.5
-  #gate_l0_lambda: 0.0
   gate_initial_bias: -2.0
-  #gate_tau: 0.5
 
-  # Transformer parameters (Grouped query attention paramerters)
+
   q_heads : 4 
-  kv_heads : 2 # number of kv groups
-  trans_depth: 6 #5
-  trans_dropout: 0.4  # 0.4 and path drop = 0.25
-
-  # TCN_head parameters 
+  kv_heads : 2 
+  trans_depth: 6 
+  trans_dropout: 0.4  
+ 
   tcn_depth: 2
   kernel_length_tcn: 4
   dropout_tcn: 0.3 
@@ -91,16 +86,19 @@ model_kwargs:
   
   # RDWT parameters
   use_rdwt: true
-  #rdwt_levels: 4
+  hybrid_auto_policy: "auto_conf"
+  policy_eval_prob: 0.02
+  policy_margin: 0.02
+  policy_lock_after: 5
   rdwt_level_choices: [2, 3, 4, 5, 6, 7, 8, 9, 10]
   rdwt_base_kernel_len: 16
-  #rdwt_init_dilations: [1.5, 1.6667, 1.75, 1.9]
-  rdwt_init_dilations: [1.5, 1.6667, 1.75, 1.8, 1.8333, 1.8571, 1.875, 1.8889, 1.9, 2.0]
+  #rdwt_init_dilations: [1.5, 1.6667, 1.75, 1.8, 1.8333, 1.8571, 1.875, 1.8889, 1.9, 2.0]
+  rdwt_init_dilations: [1.05, 1.12, 1.25, 1.50, 1.70, 1.90, 2.20, 2.55, 3.00, 3.50]
   rdwt_soft_threshold: true
-  rdwt_threshold_init: 0.02
+  rdwt_threshold_init: -2.0
   rdwt_max_scale: 4.0
-  rdwt_l2_on_logscale: 1e-5        # metti 1e-5 se vuoi leggera reg.
-  rdwt_use_spread_loss: true     # true se aggiungi la reg-loss al training
+  rdwt_l2_on_logscale: 1e-5        
+  rdwt_use_spread_loss: true     
   rdwt_spread_lambda: 3e-3
   rdwt_spread_gamma: 5.0
   rdwt_temp_init: 0.8

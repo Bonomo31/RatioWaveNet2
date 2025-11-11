@@ -21,14 +21,31 @@ from utils.latency  import measure_latency
 import torch.nn.functional as F
 
 
+class _SpectralBandAttention(nn.Module):
+    """
+    Attention sui livelli RDWT.
+    Input: energia per-banda (B, L). Output: pesi softmax (B, L).
+    Inizializzata per tornare pesi uniformi (W=0, b=0).
+    """
+    def __init__(self, levels: int, temperature: float = 1.0):
+        super().__init__()
+        self.levels = int(levels)
+        self.temperature = float(temperature)
+        self.fc = nn.Linear(self.levels, self.levels, bias=True)
+        nn.init.zeros_(self.fc.weight)
+        nn.init.zeros_(self.fc.bias)
+
+    def forward(self, band_energy: Tensor) -> Tensor:
+        logits = self.fc(band_energy) / self.temperature
+        return torch.softmax(logits, dim=-1)
+
+
 class RDWTFrontEnd(nn.Module):
     """
     RDWT front-end con scale reparametrizzate (sigmoide) + soft-threshold opzionale.
     Lavora su tensori (B, C, T). Supporta level-dropout per spegnere intere bande.
-
-    NOTA: questa versione mantiene i flag della "modifica A", ma per default
-    la guardia d'energia è spenta ed il guadagno è meno restrittivo.
     """
+    
     def __init__(self,
                  levels: int = 4,
                  base_kernel_len: int = 16,
@@ -48,7 +65,10 @@ class RDWTFrontEnd(nn.Module):
                  # SAFE knobs (ex Modifica A)
                  alpha_scale: float = 1.10,
                  energy_guard: bool = False,
-                 energy_guard_max_gain: float = 2.0):
+                 energy_guard_max_gain: float = 2.0,
+                 # NEW: attention per-banda
+                 use_spectral_attention: bool = True,
+                 attn_temperature: float = 1.0):
         super().__init__()
         assert levels >= 1
         self.levels = int(levels)
@@ -61,6 +81,10 @@ class RDWTFrontEnd(nn.Module):
         self.spread_gamma  = float(spread_gamma)
         self.level_dropout_p = float(level_dropout_p)
         self.level_dropout_mode = str(level_dropout_mode)
+
+        # Spettrale: attenzione per-banda
+        self.use_spectral_attention = bool(use_spectral_attention)
+        self.attn_temperature = float(attn_temperature)
 
         # SAFE knobs
         self.alpha_scale = float(alpha_scale)
@@ -102,6 +126,10 @@ class RDWTFrontEnd(nn.Module):
         else:
             self.tau_raw = None
         self.alpha = nn.Parameter(torch.ones(self.levels))
+        if self.use_spectral_attention:
+            self.band_attn = _SpectralBandAttention(self.levels, self.attn_temperature)
+        else:
+            self.band_attn = None
 
         # reg-loss (solo se abilitata)
         self._last_reg_loss = torch.tensor(0.0)
@@ -173,6 +201,7 @@ class RDWTFrontEnd(nn.Module):
         # pipeline RDWT
         a_prev = x  # (B,C,T)
         details_sum = torch.zeros_like(x)
+        detail_list = []
 
         # padding "same"
         pad_left  = self.K // 2
@@ -213,7 +242,17 @@ class RDWTFrontEnd(nn.Module):
             alpha_i = torch.sigmoid(self.alpha[i]) * self.alpha_scale
             detail = alpha_i * detail
             details_sum = details_sum + detail
+            detail_list.append(detail)
             a_prev = a_low
+
+        # Fusione spettrale attentiva: pesa dinamicamente i livelli RDWT
+        if self.use_spectral_attention and self.band_attn is not None and len(detail_list) == self.levels:
+            band_energy = torch.stack([d.pow(2).mean(dim=(1,2)) for d in detail_list], dim=1)  # (B, L)
+            weights = self.band_attn(band_energy)  # (B, L)
+            fused = 0.0
+            for i, d in enumerate(detail_list):
+                fused = fused + d * weights[:, i].view(-1, 1, 1)
+            details_sum = fused
 
         y = a_prev + details_sum  # (B,C,T)
 
@@ -461,7 +500,7 @@ class HybridParallelFrontEnd(nn.Module):
         """Reset consigliato quando cambi soggetto: riporta il gate a una policy neutra."""
         if self.fusion_method == "learned":
             # --- NUOVO RESET PER SubjectAdaptiveGate ---
-            self.gate.logit.data.fill_(self.gate.logit.initial_bias) # Resetta al bias iniziale
+            self.gate.logit.data.fill_(self.gate.initial_bias) # Resetta al bias iniziale
             # --- VECCHIO RESET ---
             # self.gate.w.data.copy_(torch.tensor([1.0, 1.0, -2.0], dtype=self.gate.w.dtype, device=self.gate.w.device))
             # self.gate.set_temperature(0.5)
@@ -832,6 +871,12 @@ class TCFormerModule(nn.Module):
             rdwt_level_dropout_mode: str = "per_sample",
             rdwt_branch_drop_prob: float = 0.15,
             rdwt_init_jitter_std: float = 0.05,
+            # -------- Policy di training ----------
+            hybrid_auto_policy: str = "off",  # "off" | "auto_conf"
+            policy_eval_prob: float = 0.02, 
+            policy_margin: float = 0.02,
+            policy_lock_after: int = 5
+            
         ):
         super().__init__()
         self.n_classes = n_classes
@@ -842,7 +887,14 @@ class TCFormerModule(nn.Module):
         self.use_hybrid = use_hybrid
         self.fusion_method = fusion_method
         self._gate_reg = torch.tensor(0.0)  # placeholder per extra loss opzionale
-
+        
+        # Policy di training ibrido 
+        self.hybrid_auto_policy = hybrid_auto_policy
+        self.policy_eval_prob   = float(policy_eval_prob)
+        self.policy_margin      = float(policy_margin)
+        self.policy_lock_after  = int(policy_lock_after)
+        self._policy_votes = 0
+    
         if self.use_hybrid:
             rdwt_config = {
                 'level_choices': rdwt_level_choices,
@@ -928,48 +980,66 @@ class TCFormerModule(nn.Module):
         if self.use_hybrid:
             self.hybrid_frontend.force_raw = bool(flag)
 
-    def forward(self, x):      # x: [B, C, T]
-        # Frontend processing
+    def forward(self, x_in):      # x_in: [B, C, T]  <-- rinomina: è l'input GREZZO
+        # --- Frontend processing (FUSED path) ---
         if self.use_hybrid:
-            x = self.hybrid_frontend(x)   # (B,C,T) o (B,2*C,T) in base alla fusione
+            x_fused = self.hybrid_frontend(x_in)   # (B,C,T) o (B,2*C,T)
             if hasattr(self.hybrid_frontend, "_gate_reg"):
                 self._gate_reg = self.hybrid_frontend._gate_reg
-            # --- AGGIUNTA PER LOGGING ---
             if hasattr(self.hybrid_frontend, "_last_gate_mean"):
                 self._last_gate_mean = self.hybrid_frontend._last_gate_mean
         elif hasattr(self, 'rdwt_branch') and self.rdwt_branch is not None:
-            x = self.rdwt_branch(x)   # (B,C,T)
+            x_fused = self.rdwt_branch(x_in)
+        else:
+            x_fused = x_in
 
-        conv_features = self.conv_block(x)
-#        
-#        if conv_features.ndim == 4:
-#            B, C, extra, T = conv_features.shape
-#            conv_features = conv_features.reshape(B, C * extra, T)
-#        elif conv_features.ndim == 3:
-#            B, C, T = conv_features.shape
-#        else:  # pragma: no cover - defensive branch for unexpected shapes
-#            raise ValueError(
-#                "RatioWaveNet expects convolutional features with 3 or 4 dimensions, "
-#                f"received tensor of shape {tuple(conv_features.shape)}."
-#            )
-#
-#        if conv_features.shape[1] != self.d_model:
-#            raise ValueError(
-#                "Mismatch between convolutional features and configured d_model. "
-#                f"Expected {self.d_model} channels, found {conv_features.shape[1]}"
-#            )
-#        
-        B, C, T = conv_features.shape
-
-        tokens = self.rearrange(self.mix(conv_features))
-        cos, sin = self._rotary_cache(T, tokens.device)
+        # --- Backbone (FUSED) ---
+        conv_features = self.conv_block(x_fused)                     # (B, d_model, T1)
+        tokens = self.rearrange(self.mix(conv_features))             # (B, T1, d_model)
+        cos, sin = self._rotary_cache(tokens.shape[1], tokens.device)
         for blk in self.transformer:
             tokens = blk(tokens, cos, sin)
-        tran_features = self.reduce(tokens)
+        tran_features = self.reduce(tokens)                          # (B, d_group, T1)
+        features = torch.cat((conv_features, tran_features), dim=1)  # (B, d_model+d_group, T1)
+        out = self.tcn_head(features)                                 # (B, n_classes)
 
-        features = torch.cat((conv_features, tran_features), dim=1)
-        out = self.tcn_head(features)
+        # --- POLICY: auto_conf per spegnere RDWT sui "forti" ---
+        if (self.training and self.use_hybrid and self.fusion_method == "learned"
+            and self.hybrid_auto_policy == "auto_conf"):
+            if torch.rand(()) < self.policy_eval_prob:
+                with torch.no_grad():
+                    # 1) conf (FUSED)
+                    p_fused = torch.softmax(out, dim=-1).amax(dim=-1).mean()
+
+                    # 2) conf (RAW) -> ricalcola TUTTO partendo dall'input GREZZO
+                    self.set_force_raw(True)            # bypass RDWT/gate
+                    x_raw = self.hybrid_frontend(x_in)  # con force_raw=True ritorna il RAW
+                    self.set_force_raw(False)
+
+                    conv_r = self.conv_block(x_raw)
+                    tokens_r = self.rearrange(self.mix(conv_r))
+                    # usa la stessa cache RoPE (se T coincide) o ricostruiscila
+                    if tokens_r.shape[1] != tokens.shape[1]:
+                        cos_r, sin_r = self._rotary_cache(tokens_r.shape[1], tokens_r.device)
+                    else:
+                        cos_r, sin_r = cos, sin
+                    for blk in self.transformer:
+                        tokens_r = blk(tokens_r, cos_r, sin_r)
+                    tran_r = self.reduce(tokens_r)
+                    feat_r = torch.cat((conv_r, tran_r), dim=1)
+                    out_raw = self.tcn_head(feat_r)
+
+                    p_raw = torch.softmax(out_raw, dim=-1).amax(dim=-1).mean()
+
+                    # 3) voto: se RAW è più confidente del FUSED di un margine
+                    if (p_raw - p_fused) > self.policy_margin:
+                        self._policy_votes += 1
+                        if self._policy_votes >= self.policy_lock_after:
+                            # da qui in poi il soggetto usa sempre RAW (bypass RDWT)
+                            self.set_force_raw(True)
+
         return out
+
 
     def _rotary_cache(self, seq_len: int, device: torch.device):
         """Build (or reuse) RoPE caches for the current sequence length."""
