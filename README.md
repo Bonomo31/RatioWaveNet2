@@ -167,7 +167,7 @@ The table reports **mean accuracy (%)** for all models across **BCI IV-2a**, **B
       <td><strong>RatioWaveNet</strong></td>
       <td align="right">144.4</td>
       <td align="right"><strong>85.21</strong></td>
-      <td align="right"><61.95</td>
+      <td align="right">61.95</td>
       <td align="right"><strong>88.37</strong></td>
       <td align="right"><strong>81.35</strong></td>
       <td align="right"><strong>96.48</strong></td>
