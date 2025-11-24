@@ -38,17 +38,17 @@ The table reports **mean accuracy (%)** for all models across **BCI IV-2a**, **B
     <tr>
       <th rowspan="3">Model</th>
       <th rowspan="3">Params (k)</th>
-      <th colspan="4"><a href="https://www.bbci.de/competition/iv/#dataset2a">BCI Comp IV-2a</a></th>
-      <th colspan="4"><a href="https://www.bbci.de/competition/iv/#dataset2b">BCI Comp IV-2b</a></th>
-      <th colspan="4"><a href="https://github.com/robintibor/high-gamma-dataset">HGD (High-Gamma)</a></th>
+      <th colspan="2"><a href="https://www.bbci.de/competition/iv/#dataset2a">BCI Comp IV-2a</a></th>
+      <th colspan="2"><a href="https://www.bbci.de/competition/iv/#dataset2b">BCI Comp IV-2b</a></th>
+      <th colspan="2"><a href="https://github.com/robintibor/high-gamma-dataset">HGD (High-Gamma)</a></th>
     </tr>
     <tr>
-      <th colspan="2">Sub-Dep</th>
-      <th colspan="2">LOSO</th>
-      <th colspan="2">Sub-Dep</th>
-      <th colspan="2">LOSO</th>
-      <th colspan="2">Sub-Dep</th>
-      <th colspan="2">LOSO</th>
+      <th colspan="1">Sub-Dep</th>
+      <th colspan="1">LOSO</th>
+      <th colspan="1">Sub-Dep</th>
+      <th colspan="1">LOSO</th>
+      <th colspan="1">Sub-Dep</th>
+      <th colspan="1">LOSO</th>
     </tr>
   </thead>
   <tbody>
@@ -156,27 +156,27 @@ The table reports **mean accuracy (%)** for all models across **BCI IV-2a**, **B
     <tr>
       <td><strong>TCFormer</strong></td>
       <td align="right">77.8</td>
-      <td align="right"><strong>84.79</strong></td>
+      <td align="right">84.79</td>
       <td align="right"><strong>63.00</strong></td>
-      <td align="right"><strong>87.71</strong></td>
-      <td align="right"><strong>81.34</strong></td>
-      </td><td align="right"><strong>96.27</strong></td>
+      <td align="right">87.71</td>
+      <td align="right">81.34</td>
+      <td align="right">96.27</td>
       <td align="right"><strong>72.83<sup>1</sup></strong></td>
     </tr>
     <tr>
       <td><strong>RatioWaveNet</strong></td>
-      <td align="right">77.8</td>
-      <td align="right">83.06</td><td align="right"><strong>84.79</strong></td>
-      <td align="right"><strong>62.44</strong></td><td align="right"><strong>63.00</strong></td>
-      <td align="right"><strong>87.11</strong></td><td align="right"><strong>87.71</strong></td>
-      <td align="right">79.73</td><td align="right"><strong>81.34</strong></td>
-      <td align="right"><strong>95.62</strong></td><td align="right"><strong>96.27</strong></td>
-      <td align="right">71.90<sup>1</sup></td><td align="right"><strong>72.83<sup>1</sup></strong></td>
+      <td align="right">144.4</td>
+      <td align="right"><strong>85.21</strong></td>
+      <td align="right"><61.95</td>
+      <td align="right"><strong>88.37</strong></td>
+      <td align="right"><strong>81.35</strong></td>
+      <td align="right"><strong>96.48</strong></td>
+      <td align="right">71.65<sup>1</sup></td>
     </tr>
   </tbody>
 </table>
 
-> <sup>1</sup> Using a deeper TCFormer encoder (**N = 5**, ≈131 k params). See the paper for details.  
+> <sup>1</sup> Using a deeper TCFormer encoder (**N = 2**).  
 > Reported accuracies were averaged over 5 runs (BCI IV-2a/2b) or 3 runs (HGD) using the final (last-epoch) checkpoint; no early stopping or validation-based model selection.
 
 ## Attribution
