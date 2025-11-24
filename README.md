@@ -55,113 +55,113 @@ The table reports **mean accuracy (%)** for all models across **BCI IV-2a**, **B
     <tr>
       <td>EEGNet</td>
       <td align="right">1.7</td>
-      <td align="right">70.39</td><td align="right">72.62</td>
-      <td align="right">52.01</td><td align="right">52.03</td>
-      <td align="right">82.80</td><td align="right">83.65</td>
-      <td align="right">77.67</td><td align="right">77.89</td>
-      <td align="right">85.59</td><td align="right">85.94</td>
-      <td align="right">57.95</td><td align="right">60.12</td>
+      <td align="right">72.62</td>
+      <td align="right">52.03</td>
+      <td align="right">83.65</td>
+      <td align="right">77.89</td>
+      <td align="right">85.94</td>
+      <td align="right">60.12</td>
     </tr>
     <tr>
       <td>ShallowNet</td>
       <td align="right">44.6</td>
-      <td align="right">60.50</td><td align="right">65.72</td>
-      <td align="right">48.83</td><td align="right">47.31</td>
-      <td align="right">79.12</td><td align="right">81.45</td>
-      <td align="right">74.50</td><td align="right">75.58</td>
-      <td align="right">89.75</td><td align="right">91.54</td>
-      <td align="right"><strong>72.47</strong></td><td align="center">—</td>
+      <td align="right">65.72</td>
+      <td align="right">47.31</td>
+      <td align="right">81.45</td>
+      <td align="right">75.58</td>
+      <td align="right">91.54</td>
+      <td align="center">—</td>
     </tr>
     <tr>
       <td>BaseNet</td>
       <td align="right">3.7</td>
-      <td align="right">76.45</td><td align="right">78.58</td>
-      <td align="right">57.82</td><td align="right">56.89</td>
-      <td align="right">84.51</td><td align="right">86.11</td>
-      <td align="right">78.55</td><td align="right">78.61</td>
-      <td align="right">93.64</td><td align="right">95.40</td>
-      <td align="right">68.55</td><td align="center">—</td>
+      <td align="right">78.58</td>
+      <td align="right">56.89</td>
+      <td align="right">86.11</td>
+      <td align="right">78.61</td>
+      <td align="right">95.40</td>
+      <td align="center">—</td>
     </tr>
     <tr>
       <td>EEGTCNet</td>
       <td align="right">4.1</td>
-      <td align="right">75.62</td><td align="right">78.82</td>
-      <td align="right">55.09</td><td align="right">55.99</td>
-      <td align="right">85.54</td><td align="right">86.74</td>
-      <td align="right">78.82</td><td align="right">80.56</td>
-      <td align="right">91.83</td><td align="right">93.54</td>
-      <td align="right">60.59</td><td align="center">—</td>
+      <td align="right">78.82</td>
+      <td align="right">55.99</td>
+      <td align="right">86.74</td>
+      <td align="right">80.56</td>
+      <td align="right">93.54</td>
+      <td align="center">—</td>
     </tr>
     <tr>
       <td>TS-SEFFNet</td>
       <td align="right">334.8</td>
-      <td align="right">76.65</td><td align="center">—</td>
-      <td align="right">56.74</td><td align="center">—</td>
-      <td align="right">84.18</td><td align="center">—</td>
-      <td align="right">77.82</td><td align="center">—</td>
-      <td align="right">92.45</td><td align="center">—</td>
-      <td align="right">69.99</td><td align="center">—</td>
+      <td align="center">—</td>
+      <td align="center">—</td>
+      <td align="center">—</td>
+      <td align="center">—</td>
+      <td align="center">—</td>
+      <td align="center">—</td>
     </tr>
     <!-- CTNet split into two rows (two configurations) -->
     <tr>
       <td rowspan="2">CTNet,&nbsp;&nbsp;F1=20<br/><span style="opacity:.7">CTNet, F1=8</span></td>
       <td rowspan="2" align="right">152.7<br/><span style="opacity:.7">27.3</span></td>
       <!-- conf-1 -->
-      <td align="right">78.08</td><td align="right">81.91</td>
-      <td align="right">59.67</td><td align="right">60.09</td>
-      <td align="right">86.81</td><td align="right">86.91</td>
-      <td align="right">79.44</td><td align="right">80.29</td>
-      <td align="right">93.53</td><td align="right">94.21</td>
-      <td align="right">64.87</td><td align="right">64.60</td>
+      <td align="right">81.91</td>
+      <td align="right">60.09</td>
+      <td align="right">86.91</td>
+      <td align="right">80.29</td>
+      <td align="right">94.21</td>
+      <td align="right">64.60</td>
     </tr>
     <tr>
       <!-- conf-2 -->
-      <td align="center">—</td><td align="right">79.24</td>
-      <td align="center">—</td><td align="right">56.17</td>
-      <td align="center">—</td><td align="right">87.50</td>
-      <td align="center">—</td><td align="right">80.15</td>
-      <td align="center">—</td><td align="right">92.22</td>
-      <td align="center">—</td><td align="center">—</td>
+      <td align="right">79.24</td>
+      <td align="right">56.17</td>
+      <td align="right">87.50</td>
+      <td align="right">80.15</td>
+      <td align="right">92.22</td>
+      <td align="center">—</td>
     </tr>
     <tr>
       <td>MSCFormer</td>
       <td align="right">150.7</td>
-      <td align="right">75.25</td><td align="right">79.16</td>
-      <td align="right">52.04</td><td align="right">54.27</td>
-      <td align="right">85.57</td><td align="right">87.60</td>
-      <td align="right">78.88</td><td align="right">79.20</td>
-      <td align="right">91.33</td><td align="right">94.31</td>
-      <td align="right">61.06</td><td align="right">61.19</td>
+      <td align="right">79.16</td>
+      <td align="right">54.27</td>
+      <td align="right">87.60</td>
+      <td align="right">79.20</td>
+      <td align="right">94.31</td>
+      <td align="right">61.19</td>
     </tr>
     <tr>
       <td>EEGConformer</td>
       <td align="right">789.6</td>
-      <td align="right">70.70</td><td align="right">75.39</td>
-      <td align="right">45.44</td><td align="right">45.59</td>
-      <td align="right">79.46</td><td align="right">81.89</td>
-      <td align="right">73.44</td><td align="right">75.25</td>
-      <td align="right">93.60</td><td align="right">94.67</td>
-      <td align="right">69.21</td><td align="right">69.92</td>
+      <td align="right">75.39</td>
+      <td align="right">45.59</td>
+      <td align="right">81.89</td>
+      <td align="right">75.25</td>
+      <td align="right">94.67</td>
+      <td align="right">69.92</td>
     </tr>
     <tr>
       <td>ATCNet</td>
       <td align="right">113.7</td>
-      <td align="right"><strong>83.40</strong></td><td align="right">83.78</td>
-      <td align="right">60.05</td><td align="right">59.66</td>
-      <td align="right">86.25</td><td align="right">86.26</td>
-      <td align="right"><strong>80.29</strong></td><td align="right">80.94</td>
-      <td align="right">93.65</td><td align="right">95.08</td>
-      <td align="right">67.42</td><td align="center">—</td>
+      <td align="right">83.78</td>
+      <td align="right">59.66</td>
+      <td align="right">86.26</td>
+      <td align="right">80.94</td>
+      <td align="right">95.08</td>
+      <td align="center">—</td>
     </tr>
     <tr>
       <td><strong>TCFormer</strong></td>
       <td align="right">77.8</td>
-      <td align="right">83.06</td><td align="right"><strong>84.79</strong></td>
-      <td align="right"><strong>62.44</strong></td><td align="right"><strong>63.00</strong></td>
-      <td align="right"><strong>87.11</strong></td><td align="right"><strong>87.71</strong></td>
-      <td align="right">79.73</td><td align="right"><strong>81.34</strong></td>
-      <td align="right"><strong>95.62</strong></td><td align="right"><strong>96.27</strong></td>
-      <td align="right">71.90<sup>1</sup></td><td align="right"><strong>72.83<sup>1</sup></strong></td>
+      <td align="right"><strong>84.79</strong></td>
+      <td align="right"><strong>63.00</strong></td>
+      <td align="right"><strong>87.71</strong></td>
+      <td align="right"><strong>81.34</strong></td>
+      </td><td align="right"><strong>96.27</strong></td>
+      <td align="right"><strong>72.83<sup>1</sup></strong></td>
     </tr>
     <tr>
       <td><strong>RatioWaveNet</strong></td>
