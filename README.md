@@ -31,7 +31,7 @@ RatioWaveNet2 is an EEG motor-imagery classifier built on top of the TCFormer ar
 
 **Accuracy Summary (Subject-Dependent vs. LOSO)**
 
-The table reports **mean accuracy (%)** for all models across **BCI IV-2a**, **BCI IV-2b**, and **HGD** in both **subject-dependent (Sub-Dep)** and **Leave-One-Subject-Out (LOSO)** settings, **with (+aug)** and **without (–aug)** augmentation, plus model **parameter counts (k)**. Parameter counts are referenced from the IV-2a configuration and may vary slightly with dataset/channel count.
+The table reports **mean accuracy (%)** for all models across **BCI IV-2a**, **BCI IV-2b**, and **HGD** in both **subject-dependent (Sub-Dep)** and **Leave-One-Subject-Out (LOSO)** settings, plus model **parameter counts (k)**. Parameter counts are referenced from the IV-2a configuration and may vary slightly with dataset/channel count.
 
 <table>
   <thead>
@@ -161,7 +161,7 @@ The table reports **mean accuracy (%)** for all models across **BCI IV-2a**, **B
       <td align="right">87.71</td>
       <td align="right">81.34</td>
       <td align="right">96.27</td>
-      <td align="right"><strong>72.83<sup>1</sup></strong></td>
+      <td align="right">69.69<sup>1</sup></td>
     </tr>
     <tr>
       <td><strong>RatioWaveNet</strong></td>
@@ -169,9 +169,9 @@ The table reports **mean accuracy (%)** for all models across **BCI IV-2a**, **B
       <td align="right"><strong>85.21</strong></td>
       <td align="right">61.95</td>
       <td align="right"><strong>88.37</strong></td>
-      <td align="right"><strong>81.35</strong></td>
+      <td align="right"><strong>81.57</strong></td>
       <td align="right"><strong>96.48</strong></td>
-      <td align="right">71.65<sup>1</sup></td>
+      <td align="right"><strong>71.65</strong></td>
     </tr>
   </tbody>
 </table>
