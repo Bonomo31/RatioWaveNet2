@@ -139,11 +139,11 @@ def train_and_test(config):
         test_times.append(test_duration)
 
         # --- INCOLLATO E MODIFICATO IL BLOCCO QUI ---
-        rdwt_summary = getattr(model, "rdwt_summary", None)
-        if rdwt_summary:
-            rdwt_summaries[subject_id] = list(rdwt_summary)
+        #rdwt_summary = getattr(model, "rdwt_summary", None)
+        #if rdwt_summary:
+        #    rdwt_summaries[subject_id] = list(rdwt_summary)
             # --- QUESTA È LA PRINT CHE VOLEVI ---
-            print(f"--- Subject {subject_id} | Avg. RDWT Gate Usage: {rdwt_summary[0]:.4f} ---")
+        #    print(f"--- Subject {subject_id} | Avg. RDWT Gate Usage: {rdwt_summary[0]:.4f} ---")
         # --- FINE MODIFICA ---
 
         # ---------------- LATENCY --------------

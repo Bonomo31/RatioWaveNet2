@@ -1,0 +1,22 @@
+Results for model: ratiowavenet
+#Params: 139912
+Dataset: bcic2b
+Subject IDs: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+Results for each subject:
+Subject 1 => Train Time: 13.23m, Test Time: 2.37s, Test Acc: 0.7969, Test Loss: 0.5409, Test Kappa: 0.5938
+Subject 2 => Train Time: 12.81m, Test Time: 2.19s, Test Acc: 0.6893, Test Loss: 0.7262, Test Kappa: 0.3786
+Subject 3 => Train Time: 13.22m, Test Time: 2.30s, Test Acc: 0.8469, Test Loss: 0.4035, Test Kappa: 0.6938
+Subject 4 => Train Time: 13.69m, Test Time: 2.33s, Test Acc: 0.9844, Test Loss: 0.0615, Test Kappa: 0.9688
+Subject 5 => Train Time: 13.71m, Test Time: 2.32s, Test Acc: 0.9781, Test Loss: 0.0770, Test Kappa: 0.9563
+Subject 6 => Train Time: 13.26m, Test Time: 2.27s, Test Acc: 0.8375, Test Loss: 0.3189, Test Kappa: 0.6750
+Subject 7 => Train Time: 13.25m, Test Time: 2.33s, Test Acc: 0.9438, Test Loss: 0.1596, Test Kappa: 0.8875
+Subject 8 => Train Time: 14.37m, Test Time: 2.38s, Test Acc: 0.9594, Test Loss: 0.1417, Test Kappa: 0.9187
+Subject 9 => Train Time: 13.25m, Test Time: 2.30s, Test Acc: 0.8906, Test Loss: 0.2932, Test Kappa: 0.7812
+
+--- Summary Statistics ---
+Average Test Accuracy: 88.08 ± 9.26
+Average Test Kappa:    0.762 ± 0.185
+Average Test Loss:     0.303 ± 0.211
+Total Training Time: 120.78 min
+Average Response Time: 8.71 ms
