@@ -1,0 +1,27 @@
+Results for model: ratiowavenet
+#Params: 134396
+Dataset: hgd_loso
+Subject IDs: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+
+Results for each subject:
+Subject 1 => Train Time: 78.15m, Test Time: 353.79s, Test Acc: 0.9812, Test Loss: 0.1119, Test Kappa: 0.9750
+Subject 2 => Train Time: 75.05m, Test Time: 363.27s, Test Acc: 0.7500, Test Loss: 0.6155, Test Kappa: 0.6667
+Subject 3 => Train Time: 74.66m, Test Time: 357.76s, Test Acc: 0.6875, Test Loss: 1.1193, Test Kappa: 0.5833
+Subject 4 => Train Time: 74.53m, Test Time: 355.01s, Test Acc: 0.9500, Test Loss: 0.1888, Test Kappa: 0.9333
+Subject 5 => Train Time: 75.62m, Test Time: 355.00s, Test Acc: 0.8313, Test Loss: 0.3309, Test Kappa: 0.7750
+Subject 6 => Train Time: 74.77m, Test Time: 349.69s, Test Acc: 0.6438, Test Loss: 1.2114, Test Kappa: 0.5250
+Subject 7 => Train Time: 74.84m, Test Time: 348.30s, Test Acc: 0.7736, Test Loss: 0.5681, Test Kappa: 0.6985
+Subject 8 => Train Time: 75.97m, Test Time: 346.25s, Test Acc: 0.6625, Test Loss: 0.8502, Test Kappa: 0.5500
+Subject 9 => Train Time: 74.50m, Test Time: 347.52s, Test Acc: 0.7000, Test Loss: 0.8416, Test Kappa: 0.6000
+Subject 10 => Train Time: 74.89m, Test Time: 344.16s, Test Acc: 0.7312, Test Loss: 0.6615, Test Kappa: 0.6417
+Subject 11 => Train Time: 74.47m, Test Time: 345.48s, Test Acc: 0.7125, Test Loss: 0.7331, Test Kappa: 0.6167
+Subject 12 => Train Time: 74.59m, Test Time: 348.12s, Test Acc: 0.7625, Test Loss: 0.5604, Test Kappa: 0.6833
+Subject 13 => Train Time: 74.95m, Test Time: 346.70s, Test Acc: 0.4403, Test Loss: 1.9990, Test Kappa: 0.2556
+Subject 14 => Train Time: 74.56m, Test Time: 348.19s, Test Acc: 0.5938, Test Loss: 1.4328, Test Kappa: 0.4583
+
+--- Summary Statistics ---
+Average Test Accuracy: 73.00 ± 13.17
+Average Test Kappa:    0.640 ± 0.175
+Average Test Loss:     0.802 ± 0.489
+Total Training Time: 1051.57 min
+Average Response Time: 11.19 ms

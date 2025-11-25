@@ -1,0 +1,18 @@
+Results for model: ratiowavenet
+#Params: 134396
+Dataset: hgd
+Subject IDs: [1, 2, 3, 4, 5]
+
+Results for each subject:
+Subject 1 => Train Time: 33.35m, Test Time: 15.15s, Test Acc: 0.9563, Test Loss: 0.1910, Test Kappa: 0.9417
+Subject 2 => Train Time: 78.74m, Test Time: 29.18s, Test Acc: 0.9125, Test Loss: 0.2601, Test Kappa: 0.8833
+Subject 3 => Train Time: 85.24m, Test Time: 29.40s, Test Acc: 1.0000, Test Loss: 0.0158, Test Kappa: 1.0000
+Subject 4 => Train Time: 88.49m, Test Time: 30.23s, Test Acc: 1.0000, Test Loss: 0.0147, Test Kappa: 1.0000
+Subject 5 => Train Time: 70.57m, Test Time: 27.06s, Test Acc: 1.0000, Test Loss: 0.0129, Test Kappa: 1.0000
+
+--- Summary Statistics ---
+Average Test Accuracy: 97.38 ± 3.50
+Average Test Kappa:    0.965 ± 0.047
+Average Test Loss:     0.099 ± 0.106
+Total Training Time: 356.40 min
+Average Response Time: 98.01 ms
