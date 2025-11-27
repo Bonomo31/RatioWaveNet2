@@ -1,5 +1,5 @@
-# RatioWaveNet2
-RatioWaveNet2 is an EEG motor-imagery classifier built on top of the TCFormer architecture. The model preserves the temporal convolutional transformer core from TCFormer while adding a learnable graph neural network (GNN) front-end to capture spatial dependencies between EEG channels, resulting in a spatially aware temporal model for robust brain–computer interface research.
+# RatioWaveNet
+RatioWaveNet is an EEG motor-imagery classifier built on top of the TCFormer architecture. The model preserves the temporal convolutional transformer core from TCFormer while adding a learnable graph neural network (GNN) front-end to capture spatial dependencies between EEG channels, resulting in a spatially aware temporal model for robust brain–computer interface research.
 
 ## Overview
 - **TCFormer-inspired backbone:** The model directly adapts the TCFormer design and training strategy, crediting the original repository (https://github.com/altaheri/TCFormer) for the temporal-convolutional transformer baseline.
